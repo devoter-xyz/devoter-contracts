@@ -1,3 +1,4 @@
+import "@nomicfoundation/hardhat-viem";
 import hre from "hardhat";
 import { formatEther, parseEther } from "viem";
 
@@ -18,21 +19,18 @@ async function main() {
   console.log(`Deployer address: ${deployerAddress}`);
 
   try {
-    const publicClient = await hre.viem.getPublicClient();
-
     // 1. DEPLOYMENT
     console.log("Deploying MockDEVToken...");
-    const { contract: mockDevToken, deploymentTransaction } = await hre.viem.sendDeploymentTransaction("MockDEVToken", [
+    const mockDevToken = await hre.viem.deployContract("MockDEVToken", [
       deployerAddress,
       MOCK_DEV_TOKEN_CONFIG.name,
       MOCK_DEV_TOKEN_CONFIG.symbol,
     ]);
-    
-    console.log("...waiting for deployment transaction to be mined...");
-    await publicClient.waitForTransactionReceipt({ hash: deploymentTransaction.hash });
-
     console.log(`MockDEVToken deployed to: ${mockDevToken.address}`);
-    console.log(`Transaction hash: ${deploymentTransaction.hash}`);
+
+    // @ts-ignore - The `deployTransaction` property is dynamically added by hardhat-viem
+    const hash = mockDevToken.deployTransaction.hash;
+    console.log(`📄 Transaction hash: ${hash}`);
 
 
     // 2. POST-DEPLOYMENT VERIFICATION
@@ -61,11 +59,11 @@ async function main() {
 
     // 3. CONTRACT VERIFICATION ON BLOCK EXPLORERS
     if (network !== "hardhat" && network !== "localhost") {
-      console.log("Verifying contract on block explorer...");
-      console.log("   (Waiting for 5 blocks before attempting verification...)");
+      console.log("\n🔍 Verifying contract on block explorer...");
+      console.log("   (Waiting for a few blocks before attempting verification...)");
       
-      // Here we wait for 5 confirmations
-      await publicClient.waitForTransactionReceipt({ hash: deploymentTransaction.hash, confirmations: 5 });
+      const publicClient = await hre.viem.getPublicClient();
+      await publicClient.waitForTransactionReceipt({ hash, confirmations: 5 });
 
       try {
         await hre.run("verify:verify", {
