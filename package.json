@@ -6,6 +6,8 @@
     "test:gas": "REPORT_GAS=true hardhat test",
     "deploy:sepolia": "hardhat ignition deploy ignition/modules/Lock.ts --network base-sepolia",
     "deploy:mainnet": "hardhat ignition deploy ignition/modules/Lock.ts --network base-mainnet",
+    "deploy:mock:sepolia": "hardhat run scripts/deploy-mock-token.ts --network base-sepolia",
+    "deploy:mock:mainnet": "hardhat run scripts/deploy-mock-token.ts --network base-mainnet",
     "verify": "hardhat verify --network base-sepolia",
     "clean": "hardhat clean",
     "node": "hardhat node",
