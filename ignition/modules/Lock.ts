@@ -4,18 +4,23 @@
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
 import { parseEther } from "viem";
 
-const JAN_1ST_2030 = 1893456000;
-const ONE_GWEI: bigint = parseEther("0.001");
+const DEVoterEscrowModule = buildModule("DEVoterEscrowModule", (m) => {
+  // Deploy MockDEVToken first
+  const mockDEVToken = m.contract("MockDEVToken", [
+    m.getParameter("defaultAdmin"),
+    "Mock DEV Token",
+    "mDEV",
+  ]);
 
-const LockModule = buildModule("LockModule", (m) => {
-  const unlockTime = m.getParameter("unlockTime", JAN_1ST_2030);
-  const lockedAmount = m.getParameter("lockedAmount", ONE_GWEI);
+  // Deploy DEVoterEscrow with basis points fee system
+  const dEVoterEscrow = m.contract("DEVoterEscrow", [
+    mockDEVToken,
+    m.getParameter("feeWallet"),
+    m.getParameter("feeBasisPoints", 1000), // 10% = 1000 basis points
+    m.getParameter("votingPeriod", 30 * 24 * 60 * 60), // 30 days
+  ]);
 
-  const lock = m.contract("Lock", [unlockTime], {
-    value: lockedAmount,
-  });
-
-  return { lock };
+  return { mockDEVToken, dEVoterEscrow };
 });
 
-export default LockModule;
+export default DEVoterEscrowModule;
