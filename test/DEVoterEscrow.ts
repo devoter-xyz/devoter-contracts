@@ -475,6 +475,62 @@ describe("DEVoterEscrow", function () {
     });
   });
 
+  describe("Token Release", function () {
+    it("Should allow a user to release their tokens", async function () {
+      const { dEVoterEscrow, mockDEVToken, user, votingPeriod } = await loadFixture(deployContractsFixture);
+      const depositAmount = parseEther("100");
+
+      await dEVoterEscrow.write.deposit([depositAmount], { account: user.account });
+
+      await time.increase(votingPeriod + 1);
+
+      const initialBalance = await mockDEVToken.read.balanceOf([getAddress(user.account.address)]);
+      await dEVoterEscrow.write.releaseTokens([], { account: user.account });
+      const finalBalance = await mockDEVToken.read.balanceOf([getAddress(user.account.address)]);
+
+      const escrow = await dEVoterEscrow.read.escrows([getAddress(user.account.address)]);
+      expect(escrow[0]).to.be.false; // isActive
+      expect(finalBalance > initialBalance).to.be.true;
+    });
+
+    it("Should prevent releasing tokens before the release timestamp", async function () {
+      const { dEVoterEscrow, user } = await loadFixture(deployContractsFixture);
+      const depositAmount = parseEther("100");
+
+      await dEVoterEscrow.write.deposit([depositAmount], { account: user.account });
+
+      await expect(
+        dEVoterEscrow.write.releaseTokens([], { account: user.account })
+      ).to.be.rejectedWith("Cannot release tokens before the release timestamp");
+    });
+
+    it("Should allow the owner to force release tokens", async function () {
+      const { dEVoterEscrow, mockDEVToken, owner, user } = await loadFixture(deployContractsFixture);
+      const depositAmount = parseEther("100");
+
+      await dEVoterEscrow.write.deposit([depositAmount], { account: user.account });
+
+      const initialBalance = await mockDEVToken.read.balanceOf([getAddress(user.account.address)]);
+      await dEVoterEscrow.write.forceReleaseTokens([getAddress(user.account.address)], { account: owner.account });
+      const finalBalance = await mockDEVToken.read.balanceOf([getAddress(user.account.address)]);
+
+      const escrow = await dEVoterEscrow.read.escrows([getAddress(user.account.address)]);
+      expect(escrow[0]).to.be.false; // isActive
+      expect(finalBalance > initialBalance).to.be.true;
+    });
+
+    it("Should prevent non-owners from force releasing tokens", async function () {
+      const { dEVoterEscrow, user } = await loadFixture(deployContractsFixture);
+      const depositAmount = parseEther("100");
+
+      await dEVoterEscrow.write.deposit([depositAmount], { account: user.account });
+
+      await expect(
+        dEVoterEscrow.write.forceReleaseTokens([getAddress(user.account.address)], { account: user.account })
+      ).to.be.rejected;
+    });
+  });
+
   describe("Edge Cases", function () {
     it("Should handle very small amounts correctly", async function () {
       const { dEVoterEscrow, user } = await loadFixture(deployContractsFixture);
