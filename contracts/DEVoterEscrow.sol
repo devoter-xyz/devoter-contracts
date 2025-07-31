@@ -44,6 +44,8 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable {
     event FeeWalletUpdated(address indexed oldFeeWallet, address indexed newFeeWallet);
     event FeeExemptionUpdated(address indexed user, bool isExempt);
     event FeeCollected(address indexed user, uint256 feeAmount);
+    event TokensReleased(address indexed user, uint256 amount);
+    event TokensForceReleased(address indexed user, uint256 amount, address indexed releasedBy);
 
     constructor(
         address _tokenAddress,
@@ -170,6 +172,43 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable {
         escrow.amount = 0;
 
         require(token.transfer(msg.sender, amountToRelease), "Token release failed");
+    }
+
+    /**
+     * @dev Allows a user to release their own tokens after the voting period.
+     */
+    function releaseTokens() external nonReentrant {
+        EscrowData storage escrow = escrows[msg.sender];
+        require(escrow.isActive, "No active escrow for this user");
+        require(
+            block.timestamp >= escrow.releaseTimestamp,
+            "Cannot release tokens before the release timestamp"
+        );
+
+        uint256 amount = escrow.amount;
+        escrow.isActive = false;
+        escrow.amount = 0;
+
+        token.safeTransfer(msg.sender, amount);
+
+        emit TokensReleased(msg.sender, amount);
+    }
+
+    /**
+     * @dev Allows the owner to forcibly release tokens for a user.
+     * @param user The address of the user whose tokens are to be released.
+     */
+    function forceReleaseTokens(address user) external onlyOwner nonReentrant {
+        EscrowData storage escrow = escrows[user];
+        require(escrow.isActive, "No active escrow for this user");
+
+        uint256 amount = escrow.amount;
+        escrow.isActive = false;
+        escrow.amount = 0;
+
+        token.safeTransfer(user, amount);
+
+        emit TokensForceReleased(user, amount, msg.sender);
     }
 
     // Admin functions for fee management
