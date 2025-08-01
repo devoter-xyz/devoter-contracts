@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract DEVoterEscrow is ReentrancyGuard, Ownable {
@@ -28,9 +28,14 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable {
         uint256 depositTimestamp;
         uint256 releaseTimestamp;
         uint256 feePaid; // Track fee paid for this escrow
+        uint256 votesCast; // Track total votes cast by the user
     }
 
     mapping(address => EscrowData) public escrows;
+
+    // Mappings for vote tracking
+    mapping(address => mapping(uint256 => uint256)) public userVotesPerRepo;
+    mapping(uint256 => uint256) public totalVotesPerRepo;
 
     // Events
     event TokensDeposited(
@@ -46,6 +51,7 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable {
     event FeeCollected(address indexed user, uint256 feeAmount);
     event TokensReleased(address indexed user, uint256 amount);
     event TokensForceReleased(address indexed user, uint256 amount, address indexed releasedBy);
+    event VoteCasted(address indexed user, uint256 indexed repositoryId, uint256 amount);
 
     constructor(
         address _tokenAddress,
@@ -53,7 +59,7 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable {
         uint256 _feeBasisPoints,
         uint256 _votingPeriod,
         address initialOwner
-    ) Ownable(initialOwner) {
+    ) Ownable() {
         require(_tokenAddress != address(0), "Token address cannot be zero");
         require(_feeWallet != address(0), "Fee wallet cannot be zero");
         require(_feeBasisPoints <= MAX_FEE_BASIS_POINTS, "Fee exceeds maximum allowed");
@@ -63,6 +69,7 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable {
         feeWallet = _feeWallet;
         feeBasisPoints = _feeBasisPoints;
         votingPeriod = _votingPeriod;
+        _transferOwnership(initialOwner);
     }
 
     /**
@@ -147,7 +154,8 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable {
             amount: escrowedAmount,
             depositTimestamp: block.timestamp,
             releaseTimestamp: calculateReleaseTimestamp(block.timestamp),
-            feePaid: feeAmount
+            feePaid: feeAmount,
+            votesCast: 0
         });
 
         emit TokensDeposited(
@@ -353,5 +361,38 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable {
 
     function getTokenAddress() external view returns (address) {
         return address(token);
+    }
+
+    /**
+     * @dev Allows a user to cast a vote on a repository.
+     * @param repositoryId The ID of the repository to vote on.
+     * @param amount The amount of votes to cast.
+     */
+    function castVote(uint256 repositoryId, uint256 amount) external nonReentrant {
+        EscrowData storage escrow = escrows[msg.sender];
+
+        // Validate voting conditions
+        require(escrow.isActive, "No active escrow");
+        require(isVotingPeriodActive(msg.sender), "Voting period expired");
+        require(amount > 0, "Vote amount must be greater than 0");
+        require(escrow.votesCast + amount <= escrow.amount, "Insufficient vote balance");
+
+        // Update vote tracking
+        escrow.votesCast += amount;
+        userVotesPerRepo[msg.sender][repositoryId] += amount;
+        totalVotesPerRepo[repositoryId] += amount;
+
+        // Emit voting event
+        emit VoteCasted(msg.sender, repositoryId, amount);
+    }
+
+    /**
+     * @dev Gets the remaining vote balance for a user.
+     * @param user The address of the user.
+     * @return The remaining vote balance.
+     */
+    function getRemainingVoteBalance(address user) external view returns (uint256) {
+        EscrowData memory escrow = escrows[user];
+        return escrow.amount - escrow.votesCast;
     }
 }
