@@ -36,6 +36,8 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
      */
     function deactivateRepository(uint256 id) external nonReentrant {
         Repository storage repo = repositories[id];
+        // Check if repository exists by verifying maintainer is not zero address
+        // (uninitialized mappings return default values, so address defaults to 0x0)
         require(repo.maintainer != address(0), "Repository does not exist");
         require(repo.maintainer == msg.sender || owner() == msg.sender, "No rights");
         require(repo.isActive, "Repository already inactive");
