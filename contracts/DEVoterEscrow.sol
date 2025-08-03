@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
@@ -110,7 +110,7 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
         uint256 _feeBasisPoints,
         uint256 _votingPeriod,
         address initialOwner
-    ) Ownable() {
+    ) Ownable(initialOwner) {
         require(_tokenAddress != address(0), "Token address cannot be zero");
         require(_feeWallet != address(0), "Fee wallet cannot be zero");
         require(_feeBasisPoints <= MAX_FEE_BASIS_POINTS, "Fee exceeds maximum allowed");
@@ -142,9 +142,6 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     modifier whenNotPausedOrEmergency() {
         require(!paused() || hasRole(EMERGENCY_ROLE, msg.sender), "Pausable: paused");
         _;
-
-        _transferOwnership(initialOwner);
-
     }
 
     /**
@@ -236,14 +233,9 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
             isActive: true,
             amount: escrowedAmount,
             depositTimestamp: block.timestamp,
-
             releaseTimestamp: releaseTimestamp,
-            feePaid: feeAmount
-
-            releaseTimestamp: calculateReleaseTimestamp(block.timestamp),
             feePaid: feeAmount,
             votesCast: 0
-
         });
 
         emit TokensDeposited(
@@ -678,20 +670,11 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
 
     // Existing functions (updated to use new structure)
 
-    /**
-     * @dev Cast a vote using escrowed tokens
-     * @param repositoryId The ID of the repository to vote for
-     * @param amount The amount of voting power to use
-     */
-    function castVote(uint256 repositoryId, uint256 amount) external whenNotPaused {
-        EscrowData memory escrow = escrows[msg.sender];
-        require(escrow.isActive, "No active escrow for this user");
-        require(isVotingPeriodActive(msg.sender), "Voting period is not active");
-        require(amount <= escrow.amount, "Insufficient voting power");
-        require(amount > 0, "Vote amount must be greater than 0");
+    // Enhanced View functions for contract transparency
 
-        emit VoteCast(msg.sender, repositoryId, amount, block.timestamp);
-    }
+    /**
+     * @dev Get comprehensive contract state information
+     */
 
     function calculateReleaseTimestamp(uint256 depositTime) internal view returns (uint256) {
         return depositTime + votingPeriod;
