@@ -233,9 +233,11 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
             isActive: true,
             amount: escrowedAmount,
             depositTimestamp: block.timestamp,
+
             releaseTimestamp: releaseTimestamp,
             feePaid: feeAmount,
             votesCast: 0
+
         });
 
         emit TokensDeposited(
