@@ -23,11 +23,13 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
     // Event placeholders
     event RepositorySubmitted(uint256 indexed id, address indexed maintainer);
     event RepositoryUpdated(uint256 indexed id, address indexed maintainer);
+    event RepositoryDeactivated(uint256 indexed id);
     
     constructor(address initialOwner) Ownable(initialOwner) {
         repoCounter = 0;
     }
     
+
     /**
      * @dev Update repository description by the original maintainer
      * @param id Repository ID to update
@@ -40,5 +42,57 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
         
         repo.description = newDescription;
         emit RepositoryUpdated(id, msg.sender);
+    }
+
+     * @dev Submit a new repository to the registry
+     * @param name Repository name (must not be empty)
+     * @param description Repository description
+     * @param url GitHub URL (must not be empty)
+     * @param tags Array of tags (must have at least one tag)
+     */
+    function submitRepository(
+        string calldata name,
+        string calldata description,
+        string calldata url,
+        string[] calldata tags
+    ) external nonReentrant {
+        // Validate input parameters
+        require(bytes(name).length > 0, "Repository name cannot be empty");
+        require(bytes(url).length > 0, "Repository URL cannot be empty");
+        require(tags.length > 0, "Tags are required");
+        
+        // Increment counter and create new repository
+        repoCounter += 1;
+        
+        // Store repository in mapping
+        repositories[repoCounter] = Repository({
+            name: name,
+            description: description,
+            githubUrl: url,
+            maintainer: msg.sender,
+            totalVotes: 0,
+            isActive: true,
+            submissionTime: block.timestamp,
+            tags: tags
+        });
+        
+        // Emit event
+        emit RepositorySubmitted(repoCounter, msg.sender);
+    }
+
+     * @dev Deactivates a repository by setting isActive to false
+     * @param id The ID of the repository to deactivate
+     * @notice Only the repository maintainer or contract owner can deactivate a repository
+     */
+    function deactivateRepository(uint256 id) external nonReentrant {
+        Repository storage repo = repositories[id];
+        // Check if repository exists by verifying maintainer is not zero address
+        // (uninitialized mappings return default values, so address defaults to 0x0)
+        require(repo.maintainer != address(0), "Repository does not exist");
+        require(repo.maintainer == msg.sender || owner() == msg.sender, "No rights");
+        require(repo.isActive, "Repository already inactive");
+        
+        repo.isActive = false;
+        emit RepositoryDeactivated(id);
     }
 }
