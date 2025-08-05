@@ -29,6 +29,21 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
         repoCounter = 0;
     }
     
+
+    /**
+     * @dev Update repository description by the original maintainer
+     * @param id Repository ID to update
+     * @param newDescription New description for the repository
+     */
+    function updateRepository(uint256 id, string calldata newDescription) external nonReentrant {
+        Repository storage repo = repositories[id];
+        require(repo.maintainer == msg.sender, "Not owner");
+        require(repo.isActive, "Inactive");
+        
+        repo.description = newDescription;
+        emit RepositoryUpdated(id, msg.sender);
+    }
+
      * @dev Submit a new repository to the registry
      * @param name Repository name (must not be empty)
      * @param description Repository description
