@@ -44,6 +44,7 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
         emit RepositoryUpdated(id, msg.sender);
     }
 
+    /**
      * @dev Submit a new repository to the registry
      * @param name Repository name (must not be empty)
      * @param description Repository description
@@ -80,6 +81,7 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
         emit RepositorySubmitted(repoCounter, msg.sender);
     }
 
+    /**
      * @dev Deactivates a repository by setting isActive to false
      * @param id The ID of the repository to deactivate
      * @notice Only the repository maintainer or contract owner can deactivate a repository
