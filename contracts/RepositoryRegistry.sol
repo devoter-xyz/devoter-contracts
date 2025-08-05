@@ -23,12 +23,12 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
     // Event placeholders
     event RepositorySubmitted(uint256 indexed id, address indexed maintainer);
     event RepositoryUpdated(uint256 indexed id, address indexed maintainer);
+    event RepositoryDeactivated(uint256 indexed id);
     
     constructor(address initialOwner) Ownable(initialOwner) {
         repoCounter = 0;
     }
     
-    /**
      * @dev Submit a new repository to the registry
      * @param name Repository name (must not be empty)
      * @param description Repository description
@@ -63,5 +63,21 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
         
         // Emit event
         emit RepositorySubmitted(repoCounter, msg.sender);
+    }
+
+     * @dev Deactivates a repository by setting isActive to false
+     * @param id The ID of the repository to deactivate
+     * @notice Only the repository maintainer or contract owner can deactivate a repository
+     */
+    function deactivateRepository(uint256 id) external nonReentrant {
+        Repository storage repo = repositories[id];
+        // Check if repository exists by verifying maintainer is not zero address
+        // (uninitialized mappings return default values, so address defaults to 0x0)
+        require(repo.maintainer != address(0), "Repository does not exist");
+        require(repo.maintainer == msg.sender || owner() == msg.sender, "No rights");
+        require(repo.isActive, "Repository already inactive");
+        
+        repo.isActive = false;
+        emit RepositoryDeactivated(id);
     }
 }
