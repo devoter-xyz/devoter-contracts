@@ -44,6 +44,7 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
         emit RepositoryUpdated(id, msg.sender);
     }
 
+    /**
      * @dev Submit a new repository to the registry
      * @param name Repository name (must not be empty)
      * @param description Repository description
@@ -80,6 +81,7 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
         emit RepositorySubmitted(repoCounter, msg.sender);
     }
 
+    /**
      * @dev Deactivates a repository by setting isActive to false
      * @param id The ID of the repository to deactivate
      * @notice Only the repository maintainer or contract owner can deactivate a repository
@@ -95,4 +97,87 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
         repo.isActive = false;
         emit RepositoryDeactivated(id);
     }
+
+    // ===== QUERY, SEARCH & FILTERING UTILITIES =====
+
+    /**
+     * @dev Get repository details by ID
+     * @param id Repository ID to query
+     * @return Repository struct containing all repository data
+     */
+    function getRepositoryDetails(uint256 id) external view returns (Repository memory) {
+        return repositories[id];
+    }
+
+    /**
+     * @dev Get all active repositories
+     * @return Array of Repository structs that are currently active
+     */
+    function getActiveRepositories() external view returns (Repository[] memory) {
+        // First pass: count active repositories
+        uint256 activeCount = 0;
+        for (uint256 i = 1; i <= repoCounter; i++) {
+            if (repositories[i].isActive && repositories[i].maintainer != address(0)) {
+                activeCount++;
+            }
+        }
+
+        // Create array with exact size needed
+        Repository[] memory activeRepos = new Repository[](activeCount);
+        
+        // Second pass: populate the array
+        uint256 index = 0;
+        for (uint256 i = 1; i <= repoCounter; i++) {
+            if (repositories[i].isActive && repositories[i].maintainer != address(0)) {
+                activeRepos[index] = repositories[i];
+                index++;
+            }
+        }
+
+        return activeRepos;
+    }
+
+    /**
+     * @dev Search repositories by tag (case-sensitive)
+     * @param tag The tag to search for
+     * @return Array of repository IDs that contain the specified tag
+     */
+    function searchByTag(string calldata tag) external view returns (uint256[] memory) {
+        // First pass: count repositories with the tag
+        uint256 matchCount = 0;
+        for (uint256 i = 1; i <= repoCounter; i++) {
+            if (repositories[i].maintainer != address(0) && repositories[i].isActive) {
+                string[] memory tags = repositories[i].tags;
+                for (uint256 j = 0; j < tags.length; j++) {
+                    if (keccak256(abi.encodePacked(tags[j])) == keccak256(abi.encodePacked(tag))) {
+                        matchCount++;
+                        break; // Found the tag, no need to check other tags for this repo
+                    }
+                }
+            }
+        }
+
+        // Create array with exact size needed
+        uint256[] memory matchingIds = new uint256[](matchCount);
+        
+        // Second pass: populate the array
+        uint256 index = 0;
+        for (uint256 i = 1; i <= repoCounter; i++) {
+            if (repositories[i].maintainer != address(0) && repositories[i].isActive) {
+                string[] memory tags = repositories[i].tags;
+                for (uint256 j = 0; j < tags.length; j++) {
+                    if (keccak256(abi.encodePacked(tags[j])) == keccak256(abi.encodePacked(tag))) {
+                        matchingIds[index] = i;
+                        index++;
+                        break; // Found the tag, no need to check other tags for this repo
+                    }
+                }
+            }
+        }
+
+        return matchingIds;
+    }
+
+  
+
 }
