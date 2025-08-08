@@ -14,10 +14,45 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
     DEVoterEscrow public escrowContract;
     RepositoryRegistry public registryContract;
     
-    // Voting period state variables
+    // ===== VOTE TRACKING DATA STRUCTURES =====
+    
+    /**
+     * @dev Struct to store individual vote information
+     */
+    struct Vote {
+        uint256 repositoryId;
+        uint256 amount;
+        uint256 timestamp;
+    }
+    
+    /**
+     * @dev Struct to store aggregate repository vote data
+     */
+    struct RepositoryVoteData {
+        uint256 totalVotes;
+        uint256 voterCount;
+    }
+    
+    // ===== VOTE TRACKING MAPPINGS =====
+    
+    /// @dev Array of all votes cast by each user
+    mapping(address => Vote[]) public userVotes;
+    
+    /// @dev Tracks whether a user has voted for a specific repository
+    mapping(address => mapping(uint256 => bool)) public hasUserVoted;
+    
+    /// @dev Aggregate vote data for each repository
+    mapping(uint256 => RepositoryVoteData) public repositoryVotes;
+    
+    /// @dev Tracks the amount each user voted for each repository
+    mapping(uint256 => mapping(address => uint256)) public userVotesByRepository;
+    
+    // ===== VOTING PERIOD STATE VARIABLES =====
     bool public isVotingActive;
     uint256 public votingStartTime;
     uint256 public votingEndTime;
+    
+    // ===== EVENTS =====
     
     // Events for voting period changes
     event VotingPeriodStarted(uint256 startTime, uint256 endTime);
@@ -64,5 +99,16 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         } else {
             remaining = 0;
         }
+    }
+    
+    // ===== VOTE TRACKING HELPER FUNCTIONS =====
+    
+    /**
+     * @dev Get the total number of votes cast by a user
+     * @param user Address of the user
+     * @return Number of votes cast by the user
+     */
+    function getUserVoteCount(address user) external view returns (uint256) {
+        return userVotes[user].length;
     }
 }
