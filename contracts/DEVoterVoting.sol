@@ -170,17 +170,6 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
     }
     
     /**
-     * @dev Check if a user can vote for a specific repository (simplified version)
-     * @param user Address of the user
-     * @param repositoryId ID of the repository
-     * @return Whether the user can vote for the repository
-     */
-    function canUserVote(address user, uint256 repositoryId) external view returns (bool) {
-        (bool valid,) = validateVote(user, repositoryId, 1); // Use 1 as dummy amount for basic check
-        return valid && !hasUserVoted[user][repositoryId];
-    }
-    
-    /**
      * @dev Get user's voting power (escrow amount)
      * @param user Address of the user
      * @return Amount of tokens escrowed by the user
