@@ -101,17 +101,7 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         }
     }
     
-    // ===== VOTE TRACKING HELPER FUNCTIONS =====
-    
-    /**
-     * @dev Get the total number of votes cast by a user
-     * @param user Address of the user
-     * @return Number of votes cast by the user
-     */
-    function getUserVoteCount(address user) external view returns (uint256) {
-        return userVotes[user].length;
-    }
-
+ 
     // ===== VOTE VALIDATION FUNCTIONS =====
 
     /**
@@ -181,5 +171,30 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         
         (bool isActive, uint256 amount,,,,) = escrowContract.escrows(user);
         return isActive ? amount : 0;
+    /**
+     * @dev Start a new voting period with specified duration
+     * @param duration Duration of the voting period in seconds
+     * @notice Only the contract owner can start voting periods
+     */
+    function startVotingPeriod(uint256 duration) external onlyOwner {
+        require(!isVotingActive, "Voting already active");
+        require(duration > 0, "Invalid duration");
+        
+        votingStartTime = block.timestamp;
+        votingEndTime = block.timestamp + duration;
+        isVotingActive = true;
+        
+        emit VotingPeriodStarted(votingStartTime, votingEndTime);
+    }
+    
+    /**
+     * @dev Manually end the current voting period
+     * @notice Only the contract owner can end voting periods
+     */
+    function endVotingPeriod() external onlyOwner {
+        require(isVotingActive, "No active voting period");
+        
+        isVotingActive = false;
+        emit VotingPeriodEnded(block.timestamp);
     }
 }
