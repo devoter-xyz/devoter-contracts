@@ -101,18 +101,76 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         }
     }
     
+ 
+    // ===== VOTE VALIDATION FUNCTIONS =====
 
-    // ===== VOTE TRACKING HELPER FUNCTIONS =====
+    /**
+     * @dev Validates if a user can vote for a repository with a specific amount
+     * @param user Address of the user attempting to vote
+     * @param repositoryId ID of the repository to vote for
+     * @param amount Amount of tokens to vote with
+     * @return valid Whether the vote is valid
+     * @return error Error message if the vote is invalid
+     */
+    function validateVote(address user, uint256 repositoryId, uint256 amount) 
+        public view returns (bool valid, string memory error) 
+    {
+        // Check if voting period is active
+        if (!isVotingActive || block.timestamp > votingEndTime) {
+            return (false, "Voting period not active");
+        }
+        
+        // Check if user has already voted for this repository
+        if (hasUserVoted[user][repositoryId]) {
+            return (false, "Already voted for this repository");
+        }
+        
+        // Check if the repository exists and is active
+        RepositoryRegistry.Repository memory repo = registryContract.getRepositoryDetails(repositoryId);
+        if (repo.maintainer == address(0)) {
+            return (false, "Repository does not exist");
+        }
+        
+        if (!repo.isActive) {
+            return (false, "Repository not active");
+        }
+        
+        // Check if user has active escrow
+        if (!escrowContract.hasActiveEscrow(user)) {
+            return (false, "No active escrow");
+        }
+        
+        // Check if user has sufficient escrow balance
+        // Get user's escrow amount from the public mapping
+        (bool isActive, uint256 escrowAmount,,,,) = escrowContract.escrows(user);
+        if (!isActive) {
+            return (false, "No active escrow");
+        }
+        
+        if (amount > escrowAmount) {
+            return (false, "Insufficient escrow balance");
+        }
+        
+        // Check if amount is greater than zero
+        if (amount == 0) {
+            return (false, "Vote amount must be greater than zero");
+        }
+        
+        return (true, "");
+    }
     
     /**
-     * @dev Get the total number of votes cast by a user
+     * @dev Get user's voting power (escrow amount)
      * @param user Address of the user
-     * @return Number of votes cast by the user
+     * @return Amount of tokens escrowed by the user
      */
-    function getUserVoteCount(address user) external view returns (uint256) {
-        return userVotes[user].length;
-    }
-
+    function getUserVotingPower(address user) external view returns (uint256) {
+        if (!escrowContract.hasActiveEscrow(user)) {
+            return 0;
+        }
+        
+        (bool isActive, uint256 amount,,,,) = escrowContract.escrows(user);
+        return isActive ? amount : 0;
     /**
      * @dev Start a new voting period with specified duration
      * @param duration Duration of the voting period in seconds
