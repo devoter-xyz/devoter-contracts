@@ -58,14 +58,6 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
     event VotingPeriodStarted(uint256 startTime, uint256 endTime);
     event VotingPeriodEnded(uint256 endTime);
     
-    // Events for vote casting
-    event VoteCast(
-        address indexed voter,
-        uint256 indexed repositoryId,
-        uint256 amount,
-        uint256 timestamp
-    );
-    
     /**
      * @dev Constructor to initialize the voting contract
      * @param _escrow Address of the DEVoterEscrow contract
@@ -179,7 +171,6 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         
         (bool isActive, uint256 amount,,,,) = escrowContract.escrows(user);
         return isActive ? amount : 0;
-    }
     /**
      * @dev Start a new voting period with specified duration
      * @param duration Duration of the voting period in seconds
@@ -205,46 +196,5 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         
         isVotingActive = false;
         emit VotingPeriodEnded(block.timestamp);
-    }
-    
-    // ===== VOTE CASTING FUNCTIONS =====
-    
-    /**
-     * @dev Cast a vote for a repository using escrowed tokens
-     * @param repositoryId ID of the repository to vote for
-     * @param amount Amount of escrowed tokens to vote with
-     * @notice Users can only vote once per repository during an active voting period
-     */
-    function castVote(uint256 repositoryId, uint256 amount) 
-        external 
-        nonReentrant 
-        onlyDuringVoting 
-    {
-        // Validate the vote
-        (bool valid, string memory error) = validateVote(msg.sender, repositoryId, amount);
-        require(valid, error);
-        
-        // Call escrow contract to execute the vote
-        escrowContract.castVote(repositoryId, amount);
-        
-        // Update vote tracking
-        userVotes[msg.sender].push(Vote({
-            repositoryId: repositoryId,
-            amount: amount,
-            timestamp: block.timestamp
-        }));
-        
-        hasUserVoted[msg.sender][repositoryId] = true;
-        userVotesByRepository[repositoryId][msg.sender] = amount;
-        
-        // Update repository totals
-        if (repositoryVotes[repositoryId].totalVotes == 0) {
-            repositoryVotes[repositoryId].voterCount = 1;
-        } else {
-            repositoryVotes[repositoryId].voterCount++;
-        }
-        repositoryVotes[repositoryId].totalVotes += amount;
-        
-        emit VoteCast(msg.sender, repositoryId, amount, block.timestamp);
     }
 }
