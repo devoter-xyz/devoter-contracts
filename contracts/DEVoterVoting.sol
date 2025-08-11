@@ -247,4 +247,148 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         
         emit VoteCast(msg.sender, repositoryId, amount, block.timestamp);
     }
+    
+    // ===== VOTING RESULTS AND STATISTICS FUNCTIONS =====
+    
+    /**
+     * @dev Get voting results for a specific repository
+     * @param repositoryId ID of the repository to query
+     * @return totalVotes Total number of votes cast for the repository
+     * @return voterCount Number of unique voters for the repository
+     */
+    function getVotingResults(uint256 repositoryId) 
+        external 
+        view 
+        returns (uint256 totalVotes, uint256 voterCount) 
+    {
+        RepositoryVoteData storage data = repositoryVotes[repositoryId];
+        return (data.totalVotes, data.voterCount);
+    }
+    
+    /**
+     * @dev Get repository ranking compared to other repositories
+     * @param repositoryId ID of the repository to rank
+     * @param compareIds Array of repository IDs to compare against
+     * @return rank Rank of the repository (1 = highest votes)
+     */
+    function getRepositoryRank(uint256 repositoryId, uint256[] calldata compareIds) 
+        external 
+        view 
+        returns (uint256 rank) 
+    {
+        uint256 targetVotes = repositoryVotes[repositoryId].totalVotes;
+        rank = 1;
+        
+        for (uint256 i = 0; i < compareIds.length; i++) {
+            if (repositoryVotes[compareIds[i]].totalVotes > targetVotes) {
+                rank++;
+            }
+        }
+    }
+    
+    /**
+     * @dev Get top repositories by vote count (leaderboard)
+     * @param repositoryIds Array of repository IDs to rank
+     * @param limit Maximum number of results to return
+     * @return topRepos Array of repository IDs sorted by vote count (descending)
+     * @return voteCounts Array of vote counts corresponding to topRepos
+     */
+    function getTopRepositories(uint256[] calldata repositoryIds, uint256 limit) 
+        external 
+        view 
+        returns (uint256[] memory topRepos, uint256[] memory voteCounts) 
+    {
+        require(limit > 0 && limit <= repositoryIds.length, "Invalid limit");
+        
+        // Create arrays to store results
+        uint256[] memory sortedIds = new uint256[](repositoryIds.length);
+        uint256[] memory sortedVotes = new uint256[](repositoryIds.length);
+        
+        // Copy data for sorting
+        for (uint256 i = 0; i < repositoryIds.length; i++) {
+            sortedIds[i] = repositoryIds[i];
+            sortedVotes[i] = repositoryVotes[repositoryIds[i]].totalVotes;
+        }
+        
+        // Simple bubble sort for small arrays (gas-efficient for small datasets)
+        for (uint256 i = 0; i < sortedIds.length - 1; i++) {
+            for (uint256 j = 0; j < sortedIds.length - i - 1; j++) {
+                if (sortedVotes[j] < sortedVotes[j + 1]) {
+                    // Swap votes
+                    (sortedVotes[j], sortedVotes[j + 1]) = (sortedVotes[j + 1], sortedVotes[j]);
+                    // Swap IDs
+                    (sortedIds[j], sortedIds[j + 1]) = (sortedIds[j + 1], sortedIds[j]);
+                }
+            }
+        }
+        
+        // Return only the requested limit
+        topRepos = new uint256[](limit);
+        voteCounts = new uint256[](limit);
+        
+        for (uint256 i = 0; i < limit; i++) {
+            topRepos[i] = sortedIds[i];
+            voteCounts[i] = sortedVotes[i];
+        }
+    }
+    
+    /**
+     * @dev Get detailed voting statistics for a repository
+     * @param repositoryId ID of the repository to query
+     * @return totalVotes Total votes received
+     * @return voterCount Number of unique voters
+     * @return averageVoteAmount Average vote amount per vote
+     * @return exists Whether the repository has received any votes
+     */
+    function getRepositoryStatistics(uint256 repositoryId) 
+        external 
+        view 
+        returns (
+            uint256 totalVotes, 
+            uint256 voterCount, 
+            uint256 averageVoteAmount,
+            bool exists
+        ) 
+    {
+        RepositoryVoteData storage data = repositoryVotes[repositoryId];
+        totalVotes = data.totalVotes;
+        voterCount = data.voterCount;
+        exists = voterCount > 0;
+        
+        if (exists) {
+            averageVoteAmount = totalVotes / voterCount;
+        } else {
+            averageVoteAmount = 0;
+        }
+    }
+    
+    /**
+     * @dev Get voting statistics for multiple repositories
+     * @param repositoryIds Array of repository IDs to query
+     * @return results Array of voting results for each repository
+     */
+    function getBatchVotingResults(uint256[] calldata repositoryIds) 
+        external 
+        view 
+        returns (RepositoryVoteData[] memory results) 
+    {
+        results = new RepositoryVoteData[](repositoryIds.length);
+        
+        for (uint256 i = 0; i < repositoryIds.length; i++) {
+            results[i] = repositoryVotes[repositoryIds[i]];
+        }
+    }
+    
+    /**
+     * @dev Check if a repository has received any votes
+     * @param repositoryId ID of the repository to check
+     * @return hasVotes Whether the repository has received votes
+     */
+    function hasRepositoryReceivedVotes(uint256 repositoryId) 
+        external 
+        view 
+        returns (bool hasVotes) 
+    {
+        return repositoryVotes[repositoryId].voterCount > 0;
+    }
 }
