@@ -171,6 +171,8 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         
         (bool isActive, uint256 amount,,,,) = escrowContract.escrows(user);
         return isActive ? amount : 0;
+    }
+    
     /**
      * @dev Start a new voting period with specified duration
      * @param duration Duration of the voting period in seconds
@@ -196,5 +198,84 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         
         isVotingActive = false;
         emit VotingPeriodEnded(block.timestamp);
+    }
+    
+    // ===== USER VOTE QUERY FUNCTIONS =====
+    
+    /**
+     * @dev Get all votes cast by a user
+     * @param user Address of the user
+     * @return repositoryIds Array of repository IDs the user voted for
+     * @return amounts Array of vote amounts corresponding to each repository
+     * @return timestamps Array of timestamps when each vote was cast
+     */
+    function getUserVotes(address user) 
+        external 
+        view 
+        returns (uint256[] memory repositoryIds, uint256[] memory amounts, uint256[] memory timestamps) 
+    {
+        Vote[] storage votes = userVotes[user];
+        uint256 length = votes.length;
+        
+        repositoryIds = new uint256[](length);
+        amounts = new uint256[](length);
+        timestamps = new uint256[](length);
+        
+        for (uint256 i = 0; i < length; i++) {
+            repositoryIds[i] = votes[i].repositoryId;
+            amounts[i] = votes[i].amount;
+            timestamps[i] = votes[i].timestamp;
+        }
+    }
+    
+    /**
+     * @dev Get a user's vote for a specific repository
+     * @param user Address of the user
+     * @param repositoryId ID of the repository
+     * @return amount Amount of tokens voted (0 if user hasn't voted)
+     * @return timestamp Timestamp when the vote was cast (0 if user hasn't voted)
+     */
+    function getUserVoteForRepository(address user, uint256 repositoryId) 
+        external 
+        view 
+        returns (uint256 amount, uint256 timestamp) 
+    {
+        if (!hasUserVoted[user][repositoryId]) {
+            return (0, 0);
+        }
+        
+        amount = userVotesByRepository[repositoryId][user];
+        
+        // Find timestamp from user votes array
+        Vote[] storage votes = userVotes[user];
+        for (uint256 i = 0; i < votes.length; i++) {
+            if (votes[i].repositoryId == repositoryId) {
+                timestamp = votes[i].timestamp;
+                break;
+            }
+        }
+    }
+    
+    /**
+     * @dev Get the total number of votes cast by a user
+     * @param user Address of the user
+     * @return count Number of repositories the user has voted for
+     */
+    function getUserVoteCount(address user) external view returns (uint256 count) {
+        return userVotes[user].length;
+    }
+    
+    /**
+     * @dev Check if a user has voted for a specific repository
+     * @param user Address of the user
+     * @param repositoryId ID of the repository
+     * @return hasVoted Whether the user has voted for this repository
+     */
+    function hasUserVotedForRepository(address user, uint256 repositoryId) 
+        external 
+        view 
+        returns (bool hasVoted) 
+    {
+        return hasUserVoted[user][repositoryId];
     }
 }
