@@ -226,6 +226,8 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
             amounts[i] = votes[i].amount;
             timestamps[i] = votes[i].timestamp;
         }
+        
+        return (repositoryIds, amounts, timestamps);
     }
     
     /**
@@ -254,6 +256,8 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
                 break;
             }
         }
+        
+        return (amount, timestamp);
     }
     
     /**
