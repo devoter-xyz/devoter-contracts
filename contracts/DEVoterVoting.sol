@@ -290,6 +290,7 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         returns (bool hasVoted) 
     {
         return hasUserVoted[user][repositoryId];
+    }
 
     // ===== VOTE CASTING FUNCTIONS =====
     
