@@ -330,6 +330,8 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
             topRepos[i] = sortedIds[i];
             voteCounts[i] = sortedVotes[i];
         }
+        
+        return (topRepos, voteCounts);
     }
     
     /**
@@ -360,6 +362,8 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         } else {
             averageVoteAmount = 0;
         }
+        
+        return (totalVotes, voterCount, averageVoteAmount, exists);
     }
     
     /**
