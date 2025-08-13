@@ -284,6 +284,8 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
                 rank++;
             }
         }
+        
+        return rank;
     }
     
     /**
@@ -381,6 +383,8 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         for (uint256 i = 0; i < repositoryIds.length; i++) {
             results[i] = repositoryVotes[repositoryIds[i]];
         }
+        
+        return results;
     }
     
     /**
