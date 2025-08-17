@@ -157,4 +157,77 @@ describe("RepositoryRegistry", function () {
       ).to.be.rejectedWith("Not owner");
     });
   });
+
+  describe("updateRepository - Data Integrity", function () {
+    it("Should allow updating to empty description", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      // First submit a repository
+      const name = "Test Repo";
+      const description = "Original description";
+      const url = "https://github.com/test/repo";
+      const tags = ["javascript", "blockchain"];
+
+      await repositoryRegistry.write.submitRepository(
+        [name, description, url, tags],
+        { account: maintainer1.account }
+      );
+
+      // Update to empty description
+      const emptyDescription = "";
+      await repositoryRegistry.write.updateRepository([1n, emptyDescription], {
+        account: maintainer1.account,
+      });
+
+      // Verify the description was updated to empty
+      const repo = await repositoryRegistry.read.getRepositoryDetails([1n]);
+      expect(repo.description).to.equal(emptyDescription);
+      expect(repo.name).to.equal(name); // Other fields should remain unchanged
+      expect(repo.githubUrl).to.equal(url);
+      expect(repo.maintainer.toLowerCase()).to.equal(
+        maintainer1.account.address.toLowerCase()
+      );
+      expect(repo.isActive).to.be.true;
+    });
+
+    it("Should allow updating to very long description", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      // First submit a repository
+      const name = "Test Repo";
+      const description = "Original description";
+      const url = "https://github.com/test/repo";
+      const tags = ["javascript", "blockchain"];
+
+      await repositoryRegistry.write.submitRepository(
+        [name, description, url, tags],
+        { account: maintainer1.account }
+      );
+
+      // Create a very long description (1000+ characters)
+      const longDescription =
+        "A".repeat(1000) +
+        " This is a very long description that tests the contract's ability to handle large amounts of text data. ".repeat(
+          10
+        );
+
+      await repositoryRegistry.write.updateRepository([1n, longDescription], {
+        account: maintainer1.account,
+      });
+
+      // Verify the long description was updated correctly
+      const repo = await repositoryRegistry.read.getRepositoryDetails([1n]);
+      expect(repo.description).to.equal(longDescription);
+      expect(repo.name).to.equal(name); // Other fields should remain unchanged
+      expect(repo.githubUrl).to.equal(url);
+      expect(repo.maintainer.toLowerCase()).to.equal(
+        maintainer1.account.address.toLowerCase()
+      );
+      expect(repo.isActive).to.be.true;
+    });
+  });
 });
