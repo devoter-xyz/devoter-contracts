@@ -33,6 +33,16 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         uint256 voterCount;
     }
     
+    /**
+     * @dev Struct to store individual withdrawal information
+     */
+    struct WithdrawalRecord {
+        uint256 repositoryId;
+        uint256 amount;
+        uint256 timestamp;
+        bool isActive;
+    }
+    
     // ===== VOTE TRACKING MAPPINGS =====
     
     /// @dev Array of all votes cast by each user
@@ -46,6 +56,17 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
     
     /// @dev Tracks the amount each user voted for each repository
     mapping(uint256 => mapping(address => uint256)) public userVotesByRepository;
+    
+    // ===== WITHDRAWAL TRACKING MAPPINGS =====
+    
+    /// @dev Array of all withdrawals made by each user
+    mapping(address => WithdrawalRecord[]) public userWithdrawals;
+    
+    /// @dev Tracks total amount withdrawn by each user for each repository
+    mapping(address => mapping(uint256 => uint256)) public totalWithdrawn;
+    
+    /// @dev Tracks remaining votes available for withdrawal for each user per repository
+    mapping(address => mapping(uint256 => uint256)) public remainingVotes;
     
     // ===== VOTING PERIOD STATE VARIABLES =====
     bool public isVotingActive;
@@ -64,6 +85,21 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         uint256 indexed repositoryId,
         uint256 amount,
         uint256 timestamp
+    );
+    
+    // Events for vote withdrawals
+    event VoteWithdrawn(
+        address indexed user,
+        uint256 indexed repositoryId,
+        uint256 amount,
+        uint256 timestamp
+    );
+    
+    event PartialWithdrawal(
+        address indexed user,
+        uint256 indexed repositoryId,
+        uint256 withdrawnAmount,
+        uint256 remainingAmount
     );
     
     /**
@@ -321,6 +357,9 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         
         hasUserVoted[msg.sender][repositoryId] = true;
         userVotesByRepository[repositoryId][msg.sender] = amount;
+        
+        // Initialize remaining votes for withdrawal tracking
+        remainingVotes[msg.sender][repositoryId] = amount;
         
         // Update repository totals
         if (repositoryVotes[repositoryId].totalVotes == 0) {
