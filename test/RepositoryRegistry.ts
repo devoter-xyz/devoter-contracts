@@ -777,4 +777,121 @@ describe("RepositoryRegistry", function () {
       });
     });
   });
+
+  describe("updateRepository - Data Integrity", function () {
+    it("Should preserve other repository data when updating description", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      // Submit a repository with comprehensive initial data
+      const originalName = "Data Integrity Test Repo";
+      const originalDescription = "Original comprehensive description";
+      const originalUrl = "https://github.com/test/data-integrity";
+      const originalTags = ["javascript", "blockchain", "testing"];
+
+      await repositoryRegistry.write.submitRepository(
+        [originalName, originalDescription, originalUrl, originalTags],
+        { account: maintainer1.account }
+      );
+
+      // Get initial repository state for comparison
+      const initialRepo = await repositoryRegistry.read.getRepositoryDetails([
+        1n,
+      ]);
+      const initialSubmissionTime = initialRepo.submissionTime;
+      const initialTotalVotes = initialRepo.totalVotes;
+
+      // Update only the description
+      const newDescription = "Updated description while preserving other data";
+      await repositoryRegistry.write.updateRepository([1n, newDescription], {
+        account: maintainer1.account,
+      });
+
+      // Verify the description was updated
+      const updatedRepo = await repositoryRegistry.read.getRepositoryDetails([
+        1n,
+      ]);
+      expect(updatedRepo.description).to.equal(newDescription);
+
+      // Verify ALL other repository data is preserved exactly
+      expect(updatedRepo.name).to.equal(originalName);
+      expect(updatedRepo.githubUrl).to.equal(originalUrl);
+      expect(updatedRepo.maintainer.toLowerCase()).to.equal(
+        maintainer1.account.address.toLowerCase()
+      );
+      expect(updatedRepo.isActive).to.equal(initialRepo.isActive);
+      expect(updatedRepo.submissionTime).to.equal(initialSubmissionTime);
+      expect(updatedRepo.totalVotes).to.equal(initialTotalVotes);
+      expect(updatedRepo.tags).to.deep.equal(originalTags);
+    });
+
+    it("Should handle multiple updates by same maintainer", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      // Submit a repository
+      const name = "Multiple Updates Test Repo";
+      const initialDescription = "Initial description";
+      const url = "https://github.com/test/multiple-updates";
+      const tags = ["updates", "testing"];
+
+      await repositoryRegistry.write.submitRepository(
+        [name, initialDescription, url, tags],
+        { account: maintainer1.account }
+      );
+
+      // Get initial state
+      const initialRepo = await repositoryRegistry.read.getRepositoryDetails([
+        1n,
+      ]);
+
+      // Perform multiple sequential updates
+      const descriptions = [
+        "First update - describing new features",
+        "Second update - fixing typos and improving clarity",
+        "Third update - adding more technical details",
+        "Fourth update - final version with complete information",
+      ];
+
+      for (let i = 0; i < descriptions.length; i++) {
+        await repositoryRegistry.write.updateRepository([1n, descriptions[i]], {
+          account: maintainer1.account,
+        });
+
+        // Verify each update is successful and data integrity is maintained
+        const repo = await repositoryRegistry.read.getRepositoryDetails([1n]);
+        expect(repo.description).to.equal(descriptions[i]);
+
+        // Ensure all other data remains unchanged after each update
+        expect(repo.name).to.equal(name);
+        expect(repo.githubUrl).to.equal(url);
+        expect(repo.maintainer.toLowerCase()).to.equal(
+          maintainer1.account.address.toLowerCase()
+        );
+        expect(repo.isActive).to.be.true;
+        expect(repo.submissionTime).to.equal(initialRepo.submissionTime);
+        expect(repo.totalVotes).to.equal(initialRepo.totalVotes);
+        expect(repo.tags).to.deep.equal(tags);
+      }
+
+      // Final verification - ensure the last description is correctly stored
+      const finalRepo = await repositoryRegistry.read.getRepositoryDetails([
+        1n,
+      ]);
+      expect(finalRepo.description).to.equal(
+        descriptions[descriptions.length - 1]
+      );
+
+      // Verify consistency: all non-description fields should be identical to initial state
+      expect(finalRepo.name).to.equal(initialRepo.name);
+      expect(finalRepo.githubUrl).to.equal(initialRepo.githubUrl);
+      expect(finalRepo.maintainer).to.equal(initialRepo.maintainer);
+      expect(finalRepo.isActive).to.equal(initialRepo.isActive);
+      expect(finalRepo.submissionTime).to.equal(initialRepo.submissionTime);
+      expect(finalRepo.totalVotes).to.equal(initialRepo.totalVotes);
+      expect(finalRepo.tags).to.deep.equal(initialRepo.tags);
+    });
+  });
 });

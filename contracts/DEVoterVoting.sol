@@ -33,6 +33,16 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         uint256 voterCount;
     }
     
+    /**
+     * @dev Struct to store individual withdrawal information
+     */
+    struct WithdrawalRecord {
+        uint256 repositoryId;
+        uint256 amount;
+        uint256 timestamp;
+        bool isActive;
+    }
+    
     // ===== VOTE TRACKING MAPPINGS =====
     
     /// @dev Array of all votes cast by each user
@@ -47,10 +57,25 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
     /// @dev Tracks the amount each user voted for each repository
     mapping(uint256 => mapping(address => uint256)) public userVotesByRepository;
     
+    // ===== WITHDRAWAL TRACKING MAPPINGS =====
+    
+    /// @dev Array of all withdrawals made by each user
+    mapping(address => WithdrawalRecord[]) public userWithdrawals;
+    
+    /// @dev Tracks total amount withdrawn by each user for each repository
+    mapping(address => mapping(uint256 => uint256)) public totalWithdrawn;
+    
+    /// @dev Tracks remaining votes available for withdrawal for each user per repository
+    mapping(address => mapping(uint256 => uint256)) public remainingVotes;
+    
     // ===== VOTING PERIOD STATE VARIABLES =====
     bool public isVotingActive;
     uint256 public votingStartTime;
     uint256 public votingEndTime;
+    
+    // ===== WITHDRAWAL RESTRICTION CONSTANTS =====
+    /// @dev 24-hour withdrawal restriction period before voting ends
+    uint256 public constant WITHDRAWAL_RESTRICTION_PERIOD = 24 hours;
     
     // ===== EVENTS =====
     
@@ -64,6 +89,21 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         uint256 indexed repositoryId,
         uint256 amount,
         uint256 timestamp
+    );
+    
+    // Events for vote withdrawals
+    event VoteWithdrawn(
+        address indexed user,
+        uint256 indexed repositoryId,
+        uint256 amount,
+        uint256 timestamp
+    );
+    
+    event PartialWithdrawal(
+        address indexed user,
+        uint256 indexed repositoryId,
+        uint256 withdrawnAmount,
+        uint256 remainingAmount
     );
     
     /**
@@ -179,6 +219,85 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         
         (bool isActive, uint256 amount,,,,) = escrowContract.escrows(user);
         return isActive ? amount : 0;
+    }
+
+    // ===== WITHDRAWAL RESTRICTION FUNCTIONS =====
+    
+    /**
+     * @dev Check if a user can withdraw their vote for a repository
+     * @param user Address of the user attempting to withdraw
+     * @param repositoryId ID of the repository to withdraw vote from
+     * @return allowed Whether withdrawal is allowed
+     * @return reason Explanation message for the decision
+     */
+    function canWithdrawVote(address user, uint256 repositoryId) 
+        public view returns (bool allowed, string memory reason) 
+    {
+        // Check if voting period is active
+        if (!isVotingActive) {
+            return (false, "Voting period not active");
+        }
+        
+        // Check if user has voted for this repository
+        if (!hasUserVoted[user][repositoryId]) {
+            return (false, "No vote to withdraw");
+        }
+        
+        // Check if user has any remaining votes to withdraw
+        if (remainingVotes[user][repositoryId] == 0) {
+            return (false, "No remaining votes to withdraw");
+        }
+        
+        // Check if we're within the 24-hour restriction period
+        uint256 withdrawalDeadline = votingEndTime - WITHDRAWAL_RESTRICTION_PERIOD;
+        if (block.timestamp >= withdrawalDeadline) {
+            return (false, "Cannot withdraw within 24 hours of voting end");
+        }
+        
+        return (true, "Withdrawal allowed");
+    }
+    
+    /**
+     * @dev Get the deadline timestamp after which withdrawals are no longer allowed
+     * @return deadline Timestamp of withdrawal deadline (0 if voting not active)
+     */
+    function getWithdrawalDeadline() external view returns (uint256 deadline) {
+        if (!isVotingActive) {
+            return 0;
+        }
+        return votingEndTime - WITHDRAWAL_RESTRICTION_PERIOD;
+    }
+    
+    /**
+     * @dev Get time remaining until withdrawal deadline
+     * @return timeRemaining Seconds until withdrawal deadline (0 if deadline passed or voting not active)
+     */
+    function getTimeUntilWithdrawalDeadline() external view returns (uint256 timeRemaining) {
+        if (!isVotingActive) {
+            return 0;
+        }
+        
+        uint256 deadline = votingEndTime - WITHDRAWAL_RESTRICTION_PERIOD;
+        if (block.timestamp >= deadline) {
+            return 0;
+        }
+        
+        return deadline - block.timestamp;
+    }
+    
+    /**
+     * @dev Check if we're currently in the withdrawal restriction period
+     * @return inRestrictionPeriod Whether we're in the 24-hour restriction period
+     * @return timeUntilVotingEnds Seconds until voting period ends
+     */
+    function isWithinRestrictionPeriod() external view returns (bool inRestrictionPeriod, uint256 timeUntilVotingEnds) {
+        if (!isVotingActive) {
+            return (false, 0);
+        }
+        
+        uint256 deadline = votingEndTime - WITHDRAWAL_RESTRICTION_PERIOD;
+        inRestrictionPeriod = block.timestamp >= deadline;
+        timeUntilVotingEnds = votingEndTime > block.timestamp ? votingEndTime - block.timestamp : 0;
     }
 
     /**
@@ -322,6 +441,9 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         hasUserVoted[msg.sender][repositoryId] = true;
         userVotesByRepository[repositoryId][msg.sender] = amount;
         
+        // Initialize remaining votes for withdrawal tracking
+        remainingVotes[msg.sender][repositoryId] = amount;
+        
         // Update repository totals
         if (repositoryVotes[repositoryId].totalVotes == 0) {
             repositoryVotes[repositoryId].voterCount = 1;
@@ -332,5 +454,107 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         
         emit VoteCast(msg.sender, repositoryId, amount, block.timestamp);
 
+    }
+    
+    // ===== VOTE WITHDRAWAL FUNCTIONS =====
+    
+    /**
+     * @dev Withdraw a vote for a repository (full or partial withdrawal)
+     * @param repositoryId ID of the repository to withdraw vote from
+     * @param amount Amount to withdraw (must be <= remaining votes)
+     * @notice Withdrawals are blocked within 24 hours of voting period end
+     */
+    function withdrawVote(uint256 repositoryId, uint256 amount) 
+        external 
+        nonReentrant 
+        onlyDuringVoting 
+    {
+        // Validate withdrawal using our new restriction logic
+        (bool allowed, string memory reason) = canWithdrawVote(msg.sender, repositoryId);
+        require(allowed, reason);
+        
+        // Check if user has sufficient remaining votes
+        uint256 remaining = remainingVotes[msg.sender][repositoryId];
+        require(amount > 0, "Withdrawal amount must be greater than zero");
+        require(amount <= remaining, "Insufficient remaining votes");
+        
+        // Update withdrawal tracking
+        remainingVotes[msg.sender][repositoryId] -= amount;
+        totalWithdrawn[msg.sender][repositoryId] += amount;
+        
+        // Record the withdrawal
+        userWithdrawals[msg.sender].push(WithdrawalRecord({
+            repositoryId: repositoryId,
+            amount: amount,
+            timestamp: block.timestamp,
+            isActive: true
+        }));
+        
+        // Update repository vote totals
+        repositoryVotes[repositoryId].totalVotes -= amount;
+        
+        // If user withdrew all votes, update voter count
+        if (remainingVotes[msg.sender][repositoryId] == 0) {
+            repositoryVotes[repositoryId].voterCount--;
+            hasUserVoted[msg.sender][repositoryId] = false;
+        }
+        
+        // Call escrow contract to handle the withdrawal
+        // Note: This assumes the escrow contract has a withdrawVote function
+        // If not implemented yet, this line can be commented out for now
+        // escrowContract.withdrawVote(repositoryId, amount);
+        
+        emit VoteWithdrawn(msg.sender, repositoryId, amount, block.timestamp);
+        
+        // Emit partial withdrawal event if there are remaining votes
+        if (remainingVotes[msg.sender][repositoryId] > 0) {
+            emit PartialWithdrawal(
+                msg.sender, 
+                repositoryId, 
+                amount, 
+                remainingVotes[msg.sender][repositoryId]
+            );
+        }
+    }
+    
+    /**
+     * @dev Get withdrawal history for a user
+     * @param user Address of the user
+     * @return withdrawals Array of withdrawal records
+     */
+    function getUserWithdrawals(address user) 
+        external 
+        view 
+        returns (WithdrawalRecord[] memory withdrawals) 
+    {
+        return userWithdrawals[user];
+    }
+    
+    /**
+     * @dev Get total amount withdrawn by a user for a specific repository
+     * @param user Address of the user
+     * @param repositoryId ID of the repository
+     * @return totalAmount Total amount withdrawn
+     */
+    function getTotalWithdrawnByUser(address user, uint256 repositoryId) 
+        external 
+        view 
+        returns (uint256 totalAmount) 
+    {
+        return totalWithdrawn[user][repositoryId];
+    }
+    
+    /**
+     * @dev Get remaining votes available for withdrawal for a user and repository
+     * @param user Address of the user
+     * @param repositoryId ID of the repository
+     * @return remaining Remaining votes available for withdrawal
+     */
+    function getRemainingVotes(address user, uint256 repositoryId) 
+        external 
+        view 
+        returns (uint256 remaining) 
+    {
+        return remainingVotes[user][repositoryId];
     }
 }
