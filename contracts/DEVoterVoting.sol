@@ -456,6 +456,70 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
 
     }
     
+    // ===== WITHDRAWAL AMOUNT VALIDATION FUNCTIONS =====
+    
+    /**
+     * @dev Validates withdrawal amount against user's vote balance
+     * @param user Address of the user attempting to withdraw
+     * @param repositoryId ID of the repository to withdraw from
+     * @param amount Amount to withdraw
+     * @return valid Whether the withdrawal amount is valid
+     * @return error Error message if withdrawal is invalid
+     */
+    function validateWithdrawalAmount(address user, uint256 repositoryId, uint256 amount)
+        internal view returns (bool valid, string memory error)
+    {
+        if (amount == 0) {
+            return (false, "Withdrawal amount must be greater than 0");
+        }
+        
+        uint256 originalVote = userVotesByRepository[repositoryId][user];
+        if (originalVote == 0) {
+            return (false, "No vote found for this repository");
+        }
+        
+        uint256 alreadyWithdrawn = totalWithdrawn[user][repositoryId];
+        uint256 availableToWithdraw = originalVote - alreadyWithdrawn;
+        
+        if (amount > availableToWithdraw) {
+            return (false, "Insufficient vote balance to withdraw");
+        }
+        
+        return (true, "");
+    }
+    
+    /**
+     * @dev Get available withdrawal amount for a user and repository
+     * @param user Address of the user
+     * @param repositoryId ID of the repository
+     * @return availableAmount Amount available for withdrawal
+     */
+    function getAvailableWithdrawalAmount(address user, uint256 repositoryId) 
+        external view returns (uint256 availableAmount) 
+    {
+        if (!hasUserVoted[user][repositoryId]) {
+            return 0;
+        }
+        
+        uint256 originalVote = userVotesByRepository[repositoryId][user];
+        uint256 alreadyWithdrawn = totalWithdrawn[user][repositoryId];
+        return originalVote - alreadyWithdrawn;
+    }
+    
+    /**
+     * @dev Check if withdrawal amount represents a full withdrawal
+     * @param user Address of the user
+     * @param repositoryId ID of the repository
+     * @param amount Amount to withdraw
+     * @return isFull Whether this is a full withdrawal
+     */
+    function isFullWithdrawal(address user, uint256 repositoryId, uint256 amount)
+        internal view returns (bool isFull)
+    {
+        uint256 availableAmount = this.getAvailableWithdrawalAmount(user, repositoryId);
+        return amount == availableAmount;
+    }
+    
     // ===== VOTE WITHDRAWAL FUNCTIONS =====
     
     /**
@@ -473,10 +537,12 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         (bool allowed, string memory reason) = canWithdrawVote(msg.sender, repositoryId);
         require(allowed, reason);
         
-        // Check if user has sufficient remaining votes
-        uint256 remaining = remainingVotes[msg.sender][repositoryId];
-        require(amount > 0, "Withdrawal amount must be greater than zero");
-        require(amount <= remaining, "Insufficient remaining votes");
+        // Validate withdrawal amount using new validation function
+        (bool validAmount, string memory amountError) = validateWithdrawalAmount(msg.sender, repositoryId, amount);
+        require(validAmount, amountError);
+        
+        // Check if this is a full withdrawal for cleanup logic
+        bool isFull = isFullWithdrawal(msg.sender, repositoryId, amount);
         
         // Update withdrawal tracking
         remainingVotes[msg.sender][repositoryId] -= amount;
@@ -493,8 +559,8 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         // Update repository vote totals
         repositoryVotes[repositoryId].totalVotes -= amount;
         
-        // If user withdrew all votes, update voter count
-        if (remainingVotes[msg.sender][repositoryId] == 0) {
+        // If user withdrew all votes, update voter count and reset vote status
+        if (isFull) {
             repositoryVotes[repositoryId].voterCount--;
             hasUserVoted[msg.sender][repositoryId] = false;
         }
@@ -507,7 +573,7 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         emit VoteWithdrawn(msg.sender, repositoryId, amount, block.timestamp);
         
         // Emit partial withdrawal event if there are remaining votes
-        if (remainingVotes[msg.sender][repositoryId] > 0) {
+        if (!isFull) {
             emit PartialWithdrawal(
                 msg.sender, 
                 repositoryId, 
