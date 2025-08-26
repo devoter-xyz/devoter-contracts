@@ -158,6 +158,308 @@ describe("RepositoryRegistry", function () {
     });
   });
 
+  describe("Repository Submission", function () {
+    it("Should successfully submit a repository with valid inputs", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      const name = "Test Repository";
+      const description = "A test repository for blockchain development";
+      const url = "https://github.com/test/repository";
+      const tags = ["javascript", "blockchain", "testing"];
+
+      await repositoryRegistry.write.submitRepository(
+        [name, description, url, tags],
+        { account: maintainer1.account }
+      );
+
+      const repo = await repositoryRegistry.read.getRepositoryDetails([1n]);
+
+      expect(repo.name).to.equal(name);
+      expect(repo.description).to.equal(description);
+      expect(repo.githubUrl).to.equal(url);
+      expect(repo.maintainer.toLowerCase()).to.equal(
+        maintainer1.account.address.toLowerCase()
+      );
+      expect(repo.totalVotes).to.equal(0n);
+      expect(repo.isActive).to.be.true;
+      expect(Number(repo.submissionTime)).to.be.greaterThan(0);
+      expect(repo.tags).to.deep.equal(tags);
+    });
+
+    it("Should emit RepositorySubmitted event with correct parameters", async function () {
+      const { repositoryRegistry, maintainer1, publicClient } =
+        await loadFixture(deployRepositoryRegistryFixture);
+
+      const name = "Event Test Repo";
+      const description = "Testing event emission";
+      const url = "https://github.com/event/test";
+      const tags = ["event"];
+
+      const hash = await repositoryRegistry.write.submitRepository(
+        [name, description, url, tags],
+        { account: maintainer1.account }
+      );
+
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+      expect(receipt.logs).to.have.lengthOf.at.least(1);
+      expect(receipt.status).to.equal("success");
+    });
+
+    it("Should assign sequential repository IDs", async function () {
+      const { repositoryRegistry, maintainer1, maintainer2 } =
+        await loadFixture(deployRepositoryRegistryFixture);
+
+      // Submit first repository
+      await repositoryRegistry.write.submitRepository(
+        ["Repo 1", "First repo", "https://github.com/repo1", ["tag1"]],
+        { account: maintainer1.account }
+      );
+
+      // Submit second repository
+      await repositoryRegistry.write.submitRepository(
+        ["Repo 2", "Second repo", "https://github.com/repo2", ["tag2"]],
+        { account: maintainer2.account }
+      );
+
+      // Submit third repository
+      await repositoryRegistry.write.submitRepository(
+        ["Repo 3", "Third repo", "https://github.com/repo3", ["tag3"]],
+        { account: maintainer1.account }
+      );
+
+      const repo1 = await repositoryRegistry.read.getRepositoryDetails([1n]);
+      const repo2 = await repositoryRegistry.read.getRepositoryDetails([2n]);
+      const repo3 = await repositoryRegistry.read.getRepositoryDetails([3n]);
+
+      expect(repo1.name).to.equal("Repo 1");
+      expect(repo2.name).to.equal("Repo 2");
+      expect(repo3.name).to.equal("Repo 3");
+
+      expect(repo1.maintainer.toLowerCase()).to.equal(
+        maintainer1.account.address.toLowerCase()
+      );
+      expect(repo2.maintainer.toLowerCase()).to.equal(
+        maintainer2.account.address.toLowerCase()
+      );
+      expect(repo3.maintainer.toLowerCase()).to.equal(
+        maintainer1.account.address.toLowerCase()
+      );
+    });
+
+    it("Should reject submission with empty repository name", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      await expect(
+        repositoryRegistry.write.submitRepository(
+          ["", "Valid description", "https://github.com/test/repo", ["tag1"]],
+          { account: maintainer1.account }
+        )
+      ).to.be.rejectedWith("Repository name cannot be empty");
+    });
+
+    it("Should reject submission with empty URL", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      await expect(
+        repositoryRegistry.write.submitRepository(
+          ["Valid Name", "Valid description", "", ["tag1"]],
+          { account: maintainer1.account }
+        )
+      ).to.be.rejectedWith("Repository URL cannot be empty");
+    });
+
+    it("Should reject submission with empty tags array", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      await expect(
+        repositoryRegistry.write.submitRepository(
+          [
+            "Valid Name",
+            "Valid description",
+            "https://github.com/test/repo",
+            [],
+          ],
+          { account: maintainer1.account }
+        )
+      ).to.be.rejectedWith("Tags are required");
+    });
+
+    it("Should accept repository with empty description", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      const name = "No Description Repo";
+      const description = ""; // Empty description should be allowed
+      const url = "https://github.com/test/nodesc";
+      const tags = ["minimal"];
+
+      await repositoryRegistry.write.submitRepository(
+        [name, description, url, tags],
+        { account: maintainer1.account }
+      );
+
+      const repo = await repositoryRegistry.read.getRepositoryDetails([1n]);
+      expect(repo.name).to.equal(name);
+      expect(repo.description).to.equal("");
+      expect(repo.isActive).to.be.true;
+    });
+
+    it("Should handle single character inputs correctly", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      const name = "A"; // Single character name
+      const description = "B"; // Single character description
+      const url = "https://github.com/a/b";
+      const tags = ["x"]; // Single character tag
+
+      await repositoryRegistry.write.submitRepository(
+        [name, description, url, tags],
+        { account: maintainer1.account }
+      );
+
+      const repo = await repositoryRegistry.read.getRepositoryDetails([1n]);
+      expect(repo.name).to.equal(name);
+      expect(repo.description).to.equal(description);
+      expect(repo.githubUrl).to.equal(url);
+      expect(repo.tags).to.deep.equal(tags);
+    });
+
+    it("Should handle multiple tags correctly", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      const name = "Multi Tag Repo";
+      const description = "Repository with many tags";
+      const url = "https://github.com/multi/tags";
+      const tags = [
+        "javascript",
+        "typescript",
+        "react",
+        "nodejs",
+        "blockchain",
+        "solidity",
+        "web3",
+      ];
+
+      await repositoryRegistry.write.submitRepository(
+        [name, description, url, tags],
+        { account: maintainer1.account }
+      );
+
+      const repo = await repositoryRegistry.read.getRepositoryDetails([1n]);
+      expect(repo.tags).to.deep.equal(tags);
+      expect(repo.tags).to.have.lengthOf(7);
+    });
+
+    it("Should set correct submission timestamp", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      const beforeSubmission = BigInt(Math.floor(Date.now() / 1000));
+
+      await repositoryRegistry.write.submitRepository(
+        [
+          "Time Test",
+          "Testing timestamp",
+          "https://github.com/time/test",
+          ["time"],
+        ],
+        { account: maintainer1.account }
+      );
+
+      const afterSubmission = BigInt(Math.floor(Date.now() / 1000));
+      const repo = await repositoryRegistry.read.getRepositoryDetails([1n]);
+
+      // Allow for some block time variance (submission time should be close to current time)
+      expect(Number(repo.submissionTime)).to.be.greaterThanOrEqual(
+        Number(beforeSubmission) - 60
+      );
+      expect(Number(repo.submissionTime)).to.be.lessThanOrEqual(
+        Number(afterSubmission) + 60
+      );
+    });
+
+    it("Should allow same maintainer to submit multiple repositories", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      // Submit first repository
+      await repositoryRegistry.write.submitRepository(
+        [
+          "First Repo",
+          "First repository",
+          "https://github.com/first",
+          ["first"],
+        ],
+        { account: maintainer1.account }
+      );
+
+      // Submit second repository from same maintainer
+      await repositoryRegistry.write.submitRepository(
+        [
+          "Second Repo",
+          "Second repository",
+          "https://github.com/second",
+          ["second"],
+        ],
+        { account: maintainer1.account }
+      );
+
+      const repo1 = await repositoryRegistry.read.getRepositoryDetails([1n]);
+      const repo2 = await repositoryRegistry.read.getRepositoryDetails([2n]);
+
+      expect(repo1.maintainer.toLowerCase()).to.equal(
+        maintainer1.account.address.toLowerCase()
+      );
+      expect(repo2.maintainer.toLowerCase()).to.equal(
+        maintainer1.account.address.toLowerCase()
+      );
+      expect(repo1.name).to.equal("First Repo");
+      expect(repo2.name).to.equal("Second Repo");
+    });
+
+    it("Should initialize repository with correct default values", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      await repositoryRegistry.write.submitRepository(
+        [
+          "Default Test",
+          "Testing defaults",
+          "https://github.com/defaults",
+          ["default"],
+        ],
+        { account: maintainer1.account }
+      );
+
+      const repo = await repositoryRegistry.read.getRepositoryDetails([1n]);
+
+      // Verify default values
+      expect(repo.totalVotes).to.equal(0n);
+      expect(repo.isActive).to.be.true;
+      expect(Number(repo.submissionTime)).to.be.greaterThan(0);
+      expect(repo.maintainer).to.not.equal(
+        "0x0000000000000000000000000000000000000000"
+      );
+     });
+   });
+
   describe("updateRepository - Advanced Edge Cases", function () {
     describe("Special Characters in Description", function () {
       it("Should handle Unicode characters in description", async function () {
@@ -473,6 +775,123 @@ describe("RepositoryRegistry", function () {
           maintainer2.account.address.toLowerCase()
         );
       });
+    });
+  });
+
+  describe("updateRepository - Data Integrity", function () {
+    it("Should preserve other repository data when updating description", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      // Submit a repository with comprehensive initial data
+      const originalName = "Data Integrity Test Repo";
+      const originalDescription = "Original comprehensive description";
+      const originalUrl = "https://github.com/test/data-integrity";
+      const originalTags = ["javascript", "blockchain", "testing"];
+
+      await repositoryRegistry.write.submitRepository(
+        [originalName, originalDescription, originalUrl, originalTags],
+        { account: maintainer1.account }
+      );
+
+      // Get initial repository state for comparison
+      const initialRepo = await repositoryRegistry.read.getRepositoryDetails([
+        1n,
+      ]);
+      const initialSubmissionTime = initialRepo.submissionTime;
+      const initialTotalVotes = initialRepo.totalVotes;
+
+      // Update only the description
+      const newDescription = "Updated description while preserving other data";
+      await repositoryRegistry.write.updateRepository([1n, newDescription], {
+        account: maintainer1.account,
+      });
+
+      // Verify the description was updated
+      const updatedRepo = await repositoryRegistry.read.getRepositoryDetails([
+        1n,
+      ]);
+      expect(updatedRepo.description).to.equal(newDescription);
+
+      // Verify ALL other repository data is preserved exactly
+      expect(updatedRepo.name).to.equal(originalName);
+      expect(updatedRepo.githubUrl).to.equal(originalUrl);
+      expect(updatedRepo.maintainer.toLowerCase()).to.equal(
+        maintainer1.account.address.toLowerCase()
+      );
+      expect(updatedRepo.isActive).to.equal(initialRepo.isActive);
+      expect(updatedRepo.submissionTime).to.equal(initialSubmissionTime);
+      expect(updatedRepo.totalVotes).to.equal(initialTotalVotes);
+      expect(updatedRepo.tags).to.deep.equal(originalTags);
+    });
+
+    it("Should handle multiple updates by same maintainer", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      // Submit a repository
+      const name = "Multiple Updates Test Repo";
+      const initialDescription = "Initial description";
+      const url = "https://github.com/test/multiple-updates";
+      const tags = ["updates", "testing"];
+
+      await repositoryRegistry.write.submitRepository(
+        [name, initialDescription, url, tags],
+        { account: maintainer1.account }
+      );
+
+      // Get initial state
+      const initialRepo = await repositoryRegistry.read.getRepositoryDetails([
+        1n,
+      ]);
+
+      // Perform multiple sequential updates
+      const descriptions = [
+        "First update - describing new features",
+        "Second update - fixing typos and improving clarity",
+        "Third update - adding more technical details",
+        "Fourth update - final version with complete information",
+      ];
+
+      for (let i = 0; i < descriptions.length; i++) {
+        await repositoryRegistry.write.updateRepository([1n, descriptions[i]], {
+          account: maintainer1.account,
+        });
+
+        // Verify each update is successful and data integrity is maintained
+        const repo = await repositoryRegistry.read.getRepositoryDetails([1n]);
+        expect(repo.description).to.equal(descriptions[i]);
+
+        // Ensure all other data remains unchanged after each update
+        expect(repo.name).to.equal(name);
+        expect(repo.githubUrl).to.equal(url);
+        expect(repo.maintainer.toLowerCase()).to.equal(
+          maintainer1.account.address.toLowerCase()
+        );
+        expect(repo.isActive).to.be.true;
+        expect(repo.submissionTime).to.equal(initialRepo.submissionTime);
+        expect(repo.totalVotes).to.equal(initialRepo.totalVotes);
+        expect(repo.tags).to.deep.equal(tags);
+      }
+
+      // Final verification - ensure the last description is correctly stored
+      const finalRepo = await repositoryRegistry.read.getRepositoryDetails([
+        1n,
+      ]);
+      expect(finalRepo.description).to.equal(
+        descriptions[descriptions.length - 1]
+      );
+
+      // Verify consistency: all non-description fields should be identical to initial state
+      expect(finalRepo.name).to.equal(initialRepo.name);
+      expect(finalRepo.githubUrl).to.equal(initialRepo.githubUrl);
+      expect(finalRepo.maintainer).to.equal(initialRepo.maintainer);
+      expect(finalRepo.isActive).to.equal(initialRepo.isActive);
+      expect(finalRepo.submissionTime).to.equal(initialRepo.submissionTime);
+      expect(finalRepo.totalVotes).to.equal(initialRepo.totalVotes);
+      expect(finalRepo.tags).to.deep.equal(initialRepo.tags);
     });
   });
 });
