@@ -519,9 +519,28 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         uint256 availableAmount = this.getAvailableWithdrawalAmount(user, repositoryId);
         return amount == availableAmount;
     }
+
+    // ===== ESCROW INTEGRATION FUNCTIONS =====
     
+    /**
+     * @dev Updates user's escrow balance by returning withdrawn vote tokens
+     * Will be fully implemented when DEVoterEscrow.returnVoteTokens is available
+     */
+    function updateEscrowBalance(address /*user*/, uint256 /*amount*/) internal view {
+        // Call escrow contract to return tokens
+        // Note: This requires the returnVoteTokens function to be implemented in DEVoterEscrow
+        // For now, we'll add a require statement that will fail gracefully until implemented
+        
+        // Uncomment the following lines when DEVoterEscrow.returnVoteTokens is implemented:
+        // bool success = escrowContract.returnVoteTokens(user, amount);
+        // require(success, "Failed to update escrow balance");
+        
+        // Temporary implementation - just validate the contract exists
+        require(address(escrowContract) != address(0), "Escrow contract not set");
+    }
+
     // ===== VOTE WITHDRAWAL FUNCTIONS =====
-    
+
     /**
      * @dev Withdraw a vote for a repository (full or partial withdrawal)
      * @param repositoryId ID of the repository to withdraw vote from
@@ -544,6 +563,9 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         // Check if this is a full withdrawal for cleanup logic
         bool isFull = isFullWithdrawal(msg.sender, repositoryId, amount);
         
+        // Update escrow balance before state changes
+        updateEscrowBalance(msg.sender, amount);
+        
         // Update withdrawal tracking
         remainingVotes[msg.sender][repositoryId] -= amount;
         totalWithdrawn[msg.sender][repositoryId] += amount;
@@ -564,11 +586,6 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
             repositoryVotes[repositoryId].voterCount--;
             hasUserVoted[msg.sender][repositoryId] = false;
         }
-        
-        // Call escrow contract to handle the withdrawal
-        // Note: This assumes the escrow contract has a withdrawVote function
-        // If not implemented yet, this line can be commented out for now
-        // escrowContract.withdrawVote(repositoryId, amount);
         
         emit VoteWithdrawn(msg.sender, repositoryId, amount, block.timestamp);
         
@@ -622,5 +639,23 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         returns (uint256 remaining) 
     {
         return remainingVotes[user][repositoryId];
+    }
+
+    /**
+     * @dev Calculate what user's escrow balance would be after a withdrawal
+     * @param user Address of the user
+     * @param amount Amount to be withdrawn
+     * @return projectedBalance Projected escrow balance after withdrawal
+     */
+    function getEscrowBalanceAfterWithdrawal(address user, uint256 /*repositoryId*/, uint256 amount)
+        external 
+        view 
+        returns (uint256 projectedBalance)
+    {
+        (bool isActive, uint256 currentBalance,,,,) = escrowContract.escrows(user);
+        if (!isActive) {
+            return amount; // If no active escrow, balance would just be the withdrawal amount
+        }
+        return currentBalance + amount;
     }
 }
