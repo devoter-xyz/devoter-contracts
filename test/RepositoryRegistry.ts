@@ -457,8 +457,8 @@ describe("RepositoryRegistry", function () {
       expect(repo.maintainer).to.not.equal(
         "0x0000000000000000000000000000000000000000"
       );
-     });
-   });
+    });
+  });
 
   describe("updateRepository - Advanced Edge Cases", function () {
     describe("Special Characters in Description", function () {
@@ -892,6 +892,327 @@ describe("RepositoryRegistry", function () {
       expect(finalRepo.submissionTime).to.equal(initialRepo.submissionTime);
       expect(finalRepo.totalVotes).to.equal(initialRepo.totalVotes);
       expect(finalRepo.tags).to.deep.equal(initialRepo.tags);
+    });
+  });
+
+  describe("Repository Deactivation", function () {
+    it("Should allow maintainer to deactivate their own repository", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      // Submit a repository
+      await repositoryRegistry.write.submitRepository(
+        [
+          "Deactivation Test Repo",
+          "Repository to be deactivated",
+          "https://github.com/test/deactivation",
+          ["deactivation"],
+        ],
+        { account: maintainer1.account }
+      );
+
+      // Verify repository is initially active
+      const initialRepo = await repositoryRegistry.read.getRepositoryDetails([
+        1n,
+      ]);
+      expect(initialRepo.isActive).to.be.true;
+
+      // Deactivate the repository
+      await repositoryRegistry.write.deactivateRepository([1n], {
+        account: maintainer1.account,
+      });
+
+      // Verify repository is now inactive
+      const deactivatedRepo =
+        await repositoryRegistry.read.getRepositoryDetails([1n]);
+      expect(deactivatedRepo.isActive).to.be.false;
+
+      // Verify all other data is preserved
+      expect(deactivatedRepo.name).to.equal(initialRepo.name);
+      expect(deactivatedRepo.description).to.equal(initialRepo.description);
+      expect(deactivatedRepo.githubUrl).to.equal(initialRepo.githubUrl);
+      expect(deactivatedRepo.maintainer).to.equal(initialRepo.maintainer);
+      expect(deactivatedRepo.totalVotes).to.equal(initialRepo.totalVotes);
+      expect(deactivatedRepo.submissionTime).to.equal(
+        initialRepo.submissionTime
+      );
+      expect(deactivatedRepo.tags).to.deep.equal(initialRepo.tags);
+    });
+
+    it("Should allow contract owner to deactivate any repository", async function () {
+      const { repositoryRegistry, owner, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      // Submit a repository from maintainer1
+      await repositoryRegistry.write.submitRepository(
+        [
+          "Owner Deactivation Test",
+          "Repository to be deactivated by owner",
+          "https://github.com/test/owner-deactivation",
+          ["owner", "deactivation"],
+        ],
+        { account: maintainer1.account }
+      );
+
+      // Verify repository is initially active
+      const initialRepo = await repositoryRegistry.read.getRepositoryDetails([
+        1n,
+      ]);
+      expect(initialRepo.isActive).to.be.true;
+      expect(initialRepo.maintainer.toLowerCase()).to.equal(
+        maintainer1.account.address.toLowerCase()
+      );
+
+      // Owner deactivates the repository (not the maintainer)
+      await repositoryRegistry.write.deactivateRepository([1n], {
+        account: owner.account,
+      });
+
+      // Verify repository is now inactive
+      const deactivatedRepo =
+        await repositoryRegistry.read.getRepositoryDetails([1n]);
+      expect(deactivatedRepo.isActive).to.be.false;
+    });
+
+    it("Should emit RepositoryDeactivated event", async function () {
+      const { repositoryRegistry, maintainer1, publicClient } =
+        await loadFixture(deployRepositoryRegistryFixture);
+
+      // Submit a repository
+      await repositoryRegistry.write.submitRepository(
+        [
+          "Event Test Repo",
+          "Testing deactivation event",
+          "https://github.com/test/event",
+          ["event"],
+        ],
+        { account: maintainer1.account }
+      );
+
+      // Deactivate and check for event emission
+      const hash = await repositoryRegistry.write.deactivateRepository([1n], {
+        account: maintainer1.account,
+      });
+
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+      // Verify that the transaction emitted at least one event
+      expect(receipt.logs).to.have.lengthOf.at.least(1);
+      expect(receipt.status).to.equal("success");
+    });
+
+    it("Should reject deactivation from unauthorized user", async function () {
+      const { repositoryRegistry, maintainer1, otherAccount } =
+        await loadFixture(deployRepositoryRegistryFixture);
+
+      // Submit a repository
+      await repositoryRegistry.write.submitRepository(
+        [
+          "Unauthorized Test Repo",
+          "Repository for unauthorized test",
+          "https://github.com/test/unauthorized",
+          ["unauthorized"],
+        ],
+        { account: maintainer1.account }
+      );
+
+      // Try to deactivate from unauthorized account
+      await expect(
+        repositoryRegistry.write.deactivateRepository([1n], {
+          account: otherAccount.account,
+        })
+      ).to.be.rejectedWith("No rights");
+
+      // Verify repository is still active
+      const repo = await repositoryRegistry.read.getRepositoryDetails([1n]);
+      expect(repo.isActive).to.be.true;
+    });
+
+    it("Should reject deactivation of non-existent repository", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      // Try to deactivate non-existent repository (ID 999)
+      await expect(
+        repositoryRegistry.write.deactivateRepository([999n], {
+          account: maintainer1.account,
+        })
+      ).to.be.rejectedWith("Repository does not exist");
+    });
+
+    it("Should reject deactivation of already inactive repository", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      // Submit a repository
+      await repositoryRegistry.write.submitRepository(
+        [
+          "Double Deactivation Test",
+          "Repository for double deactivation test",
+          "https://github.com/test/double-deactivation",
+          ["double"],
+        ],
+        { account: maintainer1.account }
+      );
+
+      // Deactivate the repository first time
+      await repositoryRegistry.write.deactivateRepository([1n], {
+        account: maintainer1.account,
+      });
+
+      // Verify it's deactivated
+      const deactivatedRepo =
+        await repositoryRegistry.read.getRepositoryDetails([1n]);
+      expect(deactivatedRepo.isActive).to.be.false;
+
+      // Try to deactivate again - should fail
+      await expect(
+        repositoryRegistry.write.deactivateRepository([1n], {
+          account: maintainer1.account,
+        })
+      ).to.be.rejectedWith("Repository already inactive");
+    });
+
+    it("Should allow different maintainer to deactivate another repository (owner only)", async function () {
+      const { repositoryRegistry, owner, maintainer1, maintainer2 } =
+        await loadFixture(deployRepositoryRegistryFixture);
+
+      // Submit repositories from different maintainers
+      await repositoryRegistry.write.submitRepository(
+        [
+          "Repo 1 by Maintainer 1",
+          "First repository",
+          "https://github.com/test/repo1",
+          ["repo1"],
+        ],
+        { account: maintainer1.account }
+      );
+
+      await repositoryRegistry.write.submitRepository(
+        [
+          "Repo 2 by Maintainer 2",
+          "Second repository",
+          "https://github.com/test/repo2",
+          ["repo2"],
+        ],
+        { account: maintainer2.account }
+      );
+
+      // Maintainer2 should NOT be able to deactivate maintainer1's repository
+      await expect(
+        repositoryRegistry.write.deactivateRepository([1n], {
+          account: maintainer2.account,
+        })
+      ).to.be.rejectedWith("No rights");
+
+      // But owner should be able to deactivate any repository
+      await repositoryRegistry.write.deactivateRepository([1n], {
+        account: owner.account,
+      });
+
+      await repositoryRegistry.write.deactivateRepository([2n], {
+        account: owner.account,
+      });
+
+      // Verify both repositories are deactivated
+      const repo1 = await repositoryRegistry.read.getRepositoryDetails([1n]);
+      const repo2 = await repositoryRegistry.read.getRepositoryDetails([2n]);
+      expect(repo1.isActive).to.be.false;
+      expect(repo2.isActive).to.be.false;
+    });
+
+    it("Should handle concurrent deactivation attempts", async function () {
+      const { repositoryRegistry, owner, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      // Submit a repository
+      await repositoryRegistry.write.submitRepository(
+        [
+          "Concurrent Deactivation Test",
+          "Repository for concurrent test",
+          "https://github.com/test/concurrent",
+          ["concurrent"],
+        ],
+        { account: maintainer1.account }
+      );
+
+      // Both owner and maintainer try to deactivate simultaneously
+      const deactivationPromises = [
+        repositoryRegistry.write.deactivateRepository([1n], {
+          account: owner.account,
+        }),
+        repositoryRegistry.write
+          .deactivateRepository([1n], {
+            account: maintainer1.account,
+          })
+          .catch(() => {
+            // One of these should fail with "Repository already inactive"
+          }),
+      ];
+
+      // Wait for both attempts
+      await Promise.allSettled(deactivationPromises);
+
+      // Verify repository is deactivated (one attempt succeeded)
+      const repo = await repositoryRegistry.read.getRepositoryDetails([1n]);
+      expect(repo.isActive).to.be.false;
+    });
+
+    it("Should preserve repository data after deactivation", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      // Submit a repository with comprehensive data
+      const name = "Data Preservation Test";
+      const description = "Testing data preservation after deactivation";
+      const url = "https://github.com/test/data-preservation";
+      const tags = ["preservation", "data", "testing"];
+
+      await repositoryRegistry.write.submitRepository(
+        [name, description, url, tags],
+        { account: maintainer1.account }
+      );
+
+      // Get initial repository state
+      const initialRepo = await repositoryRegistry.read.getRepositoryDetails([
+        1n,
+      ]);
+
+      // Deactivate the repository
+      await repositoryRegistry.write.deactivateRepository([1n], {
+        account: maintainer1.account,
+      });
+
+      // Get repository state after deactivation
+      const deactivatedRepo =
+        await repositoryRegistry.read.getRepositoryDetails([1n]);
+
+      // Verify only isActive has changed
+      expect(deactivatedRepo.isActive).to.be.false;
+      expect(deactivatedRepo.name).to.equal(initialRepo.name);
+      expect(deactivatedRepo.description).to.equal(initialRepo.description);
+      expect(deactivatedRepo.githubUrl).to.equal(initialRepo.githubUrl);
+      expect(deactivatedRepo.maintainer).to.equal(initialRepo.maintainer);
+      expect(deactivatedRepo.totalVotes).to.equal(initialRepo.totalVotes);
+      expect(deactivatedRepo.submissionTime).to.equal(
+        initialRepo.submissionTime
+      );
+      expect(deactivatedRepo.tags).to.deep.equal(initialRepo.tags);
+
+      // Verify all original data is still accessible
+      expect(deactivatedRepo.name).to.equal(name);
+      expect(deactivatedRepo.description).to.equal(description);
+      expect(deactivatedRepo.githubUrl).to.equal(url);
+      expect(deactivatedRepo.tags).to.deep.equal(tags);
+      expect(deactivatedRepo.maintainer.toLowerCase()).to.equal(
+        maintainer1.account.address.toLowerCase()
+      );
     });
   });
 });
