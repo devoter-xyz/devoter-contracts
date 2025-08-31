@@ -577,18 +577,9 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
             timestamp: block.timestamp,
             isActive: true
         }));
-        
-        // Update repository vote totals
-        repositoryVotes[repositoryId].totalVotes -= amount;
-        
-        // If user withdrew all votes, update voter count and reset vote status
-        if (isFull) {
-            repositoryVotes[repositoryId].voterCount--;
-            hasUserVoted[msg.sender][repositoryId] = false;
-        }
-        
+        // Update repository vote totals and user vote tracking
+        updateRepositoryTotals(msg.sender, repositoryId, amount, isFull);
         emit VoteWithdrawn(msg.sender, repositoryId, amount, block.timestamp);
-        
         // Emit partial withdrawal event if there are remaining votes
         if (!isFull) {
             emit PartialWithdrawal(
@@ -597,6 +588,78 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
                 amount, 
                 remainingVotes[msg.sender][repositoryId]
             );
+        }
+    }
+    /**
+     * @dev Internal function to update repository vote totals and user vote tracking on withdrawal
+     * @param user Address of the user
+     * @param repositoryId ID of the repository
+     * @param amount Amount withdrawn
+    * @param fullWithdrawal Whether this is a full withdrawal
+     */
+    function updateRepositoryTotals(address user, uint256 repositoryId, uint256 amount, bool fullWithdrawal) internal {
+        RepositoryVoteData storage repoData = repositoryVotes[repositoryId];
+        // Always decrease total votes
+        repoData.totalVotes -= amount;
+        if (fullWithdrawal) {
+            // Only decrease voter count for full withdrawals
+            if (repoData.voterCount > 0) {
+                repoData.voterCount--;
+            }
+            // Update user vote amount to 0 for full withdrawal
+            userVotesByRepository[repositoryId][user] = 0;
+        } else {
+            // Update remaining vote amount for partial withdrawal
+            if (userVotesByRepository[repositoryId][user] >= amount) {
+                userVotesByRepository[repositoryId][user] -= amount;
+            } else {
+                userVotesByRepository[repositoryId][user] = 0;
+            }
+        }
+    }
+    /**
+     * @dev Get repository statistics: total votes, voter count, and average vote amount
+     * @param repositoryId ID of the repository
+     * @return totalVotes Total votes for the repository
+     * @return voterCount Number of voters for the repository
+     * @return averageVoteAmount Average vote amount per voter
+     */
+    function getRepositoryStats(uint256 repositoryId)
+        external
+        view
+        returns (
+            uint256 totalVotes,
+            uint256 voterCount,
+            uint256 averageVoteAmount
+        )
+    {
+        RepositoryVoteData storage data = repositoryVotes[repositoryId];
+        totalVotes = data.totalVotes;
+        voterCount = data.voterCount;
+        if (voterCount > 0) {
+            averageVoteAmount = totalVotes / voterCount;
+        } else {
+            averageVoteAmount = 0;
+        }
+    }
+
+    /**
+     * @dev Get the user's current vote amount for a repository (original - withdrawn)
+     * @param user Address of the user
+     * @param repositoryId ID of the repository
+     * @return currentVoteAmount User's current vote amount for the repository
+     */
+    function getUserCurrentVoteAmount(address user, uint256 repositoryId)
+        external
+        view
+        returns (uint256 currentVoteAmount)
+    {
+        uint256 originalVote = userVotesByRepository[repositoryId][user];
+        uint256 withdrawn = totalWithdrawn[user][repositoryId];
+        if (originalVote > withdrawn) {
+            return originalVote - withdrawn;
+        } else {
+            return 0;
         }
     }
     
