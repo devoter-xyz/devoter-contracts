@@ -644,6 +644,119 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
     }
 
     /**
+     * @dev Get voting results for a repository (simple version of getRepositoryStats)
+     * @param repositoryId ID of the repository
+     * @return totalVotes Total votes for the repository
+     * @return voterCount Number of voters for the repository
+     */
+    function getVotingResults(uint256 repositoryId) 
+        external 
+        view 
+        returns (uint256 totalVotes, uint256 voterCount) 
+    {
+        RepositoryVoteData storage data = repositoryVotes[repositoryId];
+        return (data.totalVotes, data.voterCount);
+    }
+
+    /**
+     * @dev Get the rank of a repository compared to a list of other repositories
+     * @param repositoryId ID of the target repository
+     * @param compareIds Array of repository IDs to compare against
+     * @return rank The rank of the repository (1 = highest votes)
+     */
+    function getRepositoryRank(uint256 repositoryId, uint256[] calldata compareIds) 
+        external 
+        view 
+        returns (uint256 rank) 
+    {
+        uint256 targetVotes = repositoryVotes[repositoryId].totalVotes;
+        rank = 1;
+        
+        for (uint256 i = 0; i < compareIds.length; i++) {
+            if (repositoryVotes[compareIds[i]].totalVotes > targetVotes) {
+                rank++;
+            }
+        }
+    }
+
+    /**
+     * @dev Get top repositories by vote count from a given list
+     * @param repositoryIds Array of repository IDs to rank
+     * @param limit Maximum number of results to return
+     * @return topIds Array of repository IDs ranked by vote count (highest first)
+     * @return topVotes Array of vote counts corresponding to the ranked repositories
+     */
+    function getTopRepositories(uint256[] calldata repositoryIds, uint256 limit) 
+        external 
+        view 
+        returns (uint256[] memory topIds, uint256[] memory topVotes) 
+    {
+        require(limit > 0, "Limit must be greater than 0");
+        
+        uint256 resultLength = limit > repositoryIds.length ? repositoryIds.length : limit;
+        topIds = new uint256[](resultLength);
+        topVotes = new uint256[](resultLength);
+        
+        // Create temporary arrays for sorting
+        uint256[] memory tempIds = new uint256[](repositoryIds.length);
+        uint256[] memory tempVotes = new uint256[](repositoryIds.length);
+        
+        // Copy data for sorting
+        for (uint256 i = 0; i < repositoryIds.length; i++) {
+            tempIds[i] = repositoryIds[i];
+            tempVotes[i] = repositoryVotes[repositoryIds[i]].totalVotes;
+        }
+        
+        // Simple bubble sort (descending order by votes)
+        for (uint256 i = 0; i < repositoryIds.length - 1; i++) {
+            for (uint256 j = 0; j < repositoryIds.length - i - 1; j++) {
+                if (tempVotes[j] < tempVotes[j + 1]) {
+                    // Swap votes
+                    uint256 tempVote = tempVotes[j];
+                    tempVotes[j] = tempVotes[j + 1];
+                    tempVotes[j + 1] = tempVote;
+                    
+                    // Swap IDs
+                    uint256 tempId = tempIds[j];
+                    tempIds[j] = tempIds[j + 1];
+                    tempIds[j + 1] = tempId;
+                }
+            }
+        }
+        
+        // Copy top results
+        for (uint256 i = 0; i < resultLength; i++) {
+            topIds[i] = tempIds[i];
+            topVotes[i] = tempVotes[i];
+        }
+        
+        return (topIds, topVotes);
+    }
+
+    /**
+     * @dev Get batch voting results for multiple repositories
+     * @param repositoryIds Array of repository IDs
+     * @return totalVotes Array of total votes for each repository
+     * @return voterCounts Array of voter counts for each repository
+     */
+    function getBatchVotingResults(uint256[] calldata repositoryIds) 
+        external 
+        view 
+        returns (uint256[] memory totalVotes, uint256[] memory voterCounts) 
+    {
+        totalVotes = new uint256[](repositoryIds.length);
+        voterCounts = new uint256[](repositoryIds.length);
+        
+        for (uint256 i = 0; i < repositoryIds.length; i++) {
+            RepositoryVoteData storage data = repositoryVotes[repositoryIds[i]];
+            totalVotes[i] = data.totalVotes;
+            voterCounts[i] = data.voterCount;
+        }
+        
+        return (totalVotes, voterCounts);
+    }
+
+    /**
      * @dev Get the user's current vote amount for a repository (original - withdrawn)
      * @param user Address of the user
      * @param repositoryId ID of the repository
