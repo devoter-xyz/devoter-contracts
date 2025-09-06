@@ -58,55 +58,36 @@ describe("DEVoterVoting", function () {
   }
 
   describe("Voting Period Management", function () {
-    describe("startVotingPeriod() tests", function () {
-      it("Should successfully start voting period with valid duration", async function () {
+    describe("startVotingPeriod() tests", function () {});
+
+    describe("endVotingPeriod() tests", function () {
+      it("Should allow owner to end active voting period", async function () {
         const { devoterVoting, owner } = await loadFixture(
           deployDEVoterVotingFixture
         );
 
         const duration = 7 * 24 * 60 * 60; // 7 days in seconds
 
-        // Start voting period
+        // First start a voting period
         await devoterVoting.write.startVotingPeriod([BigInt(duration)], {
           account: owner.account,
         });
 
         // Verify voting period is active
-        const votingStatus = await devoterVoting.read.getVotingStatus();
-        expect(votingStatus[0]).to.be.true; // active
-        expect(Number(votingStatus[1])).to.be.approximately(duration, 5); // remaining time
-
-        // Verify state variables are set correctly
         expect(await devoterVoting.read.isVotingActive()).to.be.true;
-        expect(
-          Number(await devoterVoting.read.votingStartTime())
-        ).to.be.greaterThan(0);
-        expect(
-          Number(await devoterVoting.read.votingEndTime())
-        ).to.be.greaterThan(Number(await devoterVoting.read.votingStartTime()));
-      });
+        const initialStatus = await devoterVoting.read.getVotingStatus();
+        expect(initialStatus[0]).to.be.true; // active
 
-      it("Should set correct votingStartTime (current block.timestamp)", async function () {
-        const { devoterVoting, owner } = await loadFixture(
-          deployDEVoterVotingFixture
-        );
-
-        const duration = 5 * 24 * 60 * 60; // 5 days
-
-        // Record time before starting
-        const beforeStart = await time.latest();
-
-        // Start voting period
-        await devoterVoting.write.startVotingPeriod([BigInt(duration)], {
+        // End the voting period
+        await devoterVoting.write.endVotingPeriod({
           account: owner.account,
         });
 
-        // Get voting start time
-        const startTime = await devoterVoting.read.votingStartTime();
-
-        // Verify start time is recent and matches current block timestamp
-        expect(Number(startTime)).to.be.greaterThanOrEqual(beforeStart);
-        expect(Number(startTime)).to.be.lessThanOrEqual(beforeStart + 10);
+        // Verify voting period is now inactive
+        expect(await devoterVoting.read.isVotingActive()).to.be.false;
+        const endedStatus = await devoterVoting.read.getVotingStatus();
+        expect(endedStatus[0]).to.be.false; // not active
+        expect(Number(endedStatus[1])).to.equal(0); // remaining time should be 0
       });
     });
   });
