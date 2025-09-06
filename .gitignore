@@ -17,3 +17,5 @@ coverage.json
 ignition/deployments/chain-31337
 
 .DS_Store
+
+TestPlan.md
