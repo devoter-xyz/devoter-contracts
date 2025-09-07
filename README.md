@@ -13,111 +13,115 @@ This project follows a standard Hardhat project structure:
 - `ignition/`: Holds the deployment scripts for Hardhat Ignition.
 - `hardhat.config.ts`: The main Hardhat configuration file.
 
-## 🚀 Setup Instructions
+
+
+##  Setup Instructions
 
 ### 🛠️ Prerequisites
 
 - [Node.js](https://nodejs.org/en/) (v18 or later)
-- [pnpm](https://pnpm.io/)
+- [npm](https://www.npmjs.com/)
 
 ### 📦 Installation
 
 1. **Clone the repository:**
-    ```bash
-    git clone https://github.com/devoter-xyz/devoter-contracts.git
-    cd devoter-contracts
-    ```
+  ```bash
+  git clone https://github.com/devoter-xyz/devoter-contracts.git
+  cd devoter-contracts
+  ```
 2. **Install dependencies:**
-    ```bash
-    pnpm install
-    ```
+  ```bash
+  npm install
+  ```
 3. **Copy environment variables template:**
-    ```bash
-    cp .env.example .env
-    ```
+  ```bash
+  cp .env.example .env
+  ```
 4. **Configure environment variables:**
-    - Edit `.env` and fill in your `PRIVATE_KEY`, `BASE_MAINNET_RPC_URL`, `BASE_SEPOLIA_RPC_URL`, and `ANKR_API_KEY`.
+  - Edit `.env` and fill in your `PRIVATE_KEY`, `BASE_MAINNET_RPC_URL`, `BASE_SEPOLIA_RPC_URL`, and `ANKR_API_KEY`.
 
 5. **Test setup:**
-    ```bash
-    pnpm compile
-    ```
+  ```bash
+  npm run compile
+  ```
+
 
 ## 📝 Available Commands
 
 - **🛠️ Compile contracts:**
   ```bash
-  pnpm compile
+  npm run compile
   ```
 - **🧪 Run tests:**
   ```bash
-  pnpm test
+  npm test
   ```
 - **⛽ Run tests with gas reporting:**
   ```bash
-  pnpm test:gas
+  npm run test:gas
   ```
 - **🚀 Deploy to Base Sepolia testnet:**
   ```bash
-  pnpm deploy:sepolia
+  npm run deploy:sepolia
   ```
 - **🚀 Deploy to Base Mainnet:**
   ```bash
-  pnpm deploy:mainnet
+  npm run deploy:mainnet
   ```
 - **🔍 Verify contract on Base Sepolia:**
   ```bash
-  pnpm verify
+  npm run verify
   ```
 - **🧹 Clean build artifacts:**
   ```bash
-  pnpm clean
+  npm run clean
   ```
 - **🖧 Start local Hardhat node:**
   ```bash
-  pnpm node
+  npm run node
   ```
 - **🌐 Check network connection:**
   ```bash
-  pnpm check-connection
+  npm run check-connection
   ```
+
 
 ## 🔄 Development Workflow
 
 1. **Install dependencies and set up environment variables** as described above.
 2. **🛠️ Compile contracts** after making changes:
-    ```bash
-    pnpm compile
-    ```
+  ```bash
+  npm run compile
+  ```
 3. **🧪 Write and run tests** in the `test/` directory:
-    ```bash
-    pnpm test
-    # or with gas reporting
-    pnpm test:gas
-    ```
+  ```bash
+  npm test
+  # or with gas reporting
+  npm run test:gas
+  ```
 4. **🚀 Deploy contracts** to your desired network:
-    - For Base Sepolia:
-      ```bash
-      pnpm deploy:sepolia
-      ```
-    - For Base Mainnet:
-      ```bash
-      pnpm deploy:mainnet
-      ```
+  - For Base Sepolia:
+    ```bash
+    npm run deploy:sepolia
+    ```
+  - For Base Mainnet:
+    ```bash
+    npm run deploy:mainnet
+    ```
 5. **🔍 Verify contracts** (after deployment):
-    ```bash
-    pnpm verify
-    ```
+  ```bash
+  npm run verify
+  ```
 6. **🖧 Start a local node** for local development:
-    ```bash
-    pnpm node
-    ```
+  ```bash
+  npm run node
+  ```
 7. **🧹 Clean build artifacts** when needed:
-    ```bash
-    pnpm clean
-    ```
+  ```bash
+  npm run clean
+  ```
 
 ---
 
-**Note:** This project uses `pnpm` as the package manager.
+**Note:** This project uses `npm` as the package manager.
 
