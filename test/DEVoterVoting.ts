@@ -9,6 +9,17 @@ import { getAddress } from "viem";
 import "@nomicfoundation/hardhat-viem";
 import "@nomicfoundation/hardhat-viem/types";
 
+// Add type declaration for HardhatRuntimeEnvironment
+declare module "hardhat/types" {
+  interface HardhatRuntimeEnvironment {
+    viem: {
+      getWalletClients: () => Promise<any[]>;
+      deployContract: (name: string, args: any[]) => Promise<any>;
+      getPublicClient: () => Promise<any>;
+    };
+  }
+}
+
 describe("DEVoterVoting", function () {
   async function deployDEVoterVotingFixture() {
     const [owner, voter1, voter2, maintainer1, otherAccount] =
