@@ -9,7 +9,7 @@ import { getAddress } from "viem";
 import "@nomicfoundation/hardhat-viem";
 import "@nomicfoundation/hardhat-viem/types";
 
-// Adding type declaration for HardhatRuntimeEnvironment
+// Add type declaration for HardhatRuntimeEnvironment
 declare module "hardhat/types" {
   interface HardhatRuntimeEnvironment {
     viem: {
