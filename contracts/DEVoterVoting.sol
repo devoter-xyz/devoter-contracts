@@ -707,20 +707,23 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
             tempVotes[i] = repositoryVotes[repositoryIds[i]].totalVotes;
         }
         
-        // Simple bubble sort (descending order by votes)
-        for (uint256 i = 0; i < repositoryIds.length - 1; i++) {
-            for (uint256 j = 0; j < repositoryIds.length - i - 1; j++) {
-                if (tempVotes[j] < tempVotes[j + 1]) {
-                    // Swap votes
-                    uint256 tempVote = tempVotes[j];
-                    tempVotes[j] = tempVotes[j + 1];
-                    tempVotes[j + 1] = tempVote;
-                    
-                    // Swap IDs
-                    uint256 tempId = tempIds[j];
-                    tempIds[j] = tempIds[j + 1];
-                    tempIds[j + 1] = tempId;
+        // Selection sort (descending order by votes)
+        for (uint256 i = 0; i < repositoryIds.length; i++) {
+            uint256 maxIdx = i;
+            for (uint256 j = i + 1; j < repositoryIds.length; j++) {
+                if (tempVotes[j] > tempVotes[maxIdx]) {
+                    maxIdx = j;
                 }
+            }
+            if (maxIdx != i) {
+                // Swap votes
+                uint256 tempVote = tempVotes[i];
+                tempVotes[i] = tempVotes[maxIdx];
+                tempVotes[maxIdx] = tempVote;
+                // Swap IDs
+                uint256 tempId = tempIds[i];
+                tempIds[i] = tempIds[maxIdx];
+                tempIds[maxIdx] = tempId;
             }
         }
         
