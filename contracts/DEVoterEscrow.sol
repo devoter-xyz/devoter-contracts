@@ -213,11 +213,11 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
         uint256 feeAmount = calculateFee(_amount, msg.sender);
         uint256 escrowedAmount = _amount - feeAmount;
 
-        require(token.transferFrom(msg.sender, address(this), _amount), "Token transfer failed");
-        
+        token.safeTransferFrom(msg.sender, address(this), _amount);
+
         // Transfer fee if applicable
         if (feeAmount > 0) {
-            require(token.transfer(feeWallet, feeAmount), "Fee transfer failed");
+            token.safeTransfer(feeWallet, feeAmount);
             emit FeeCollected(msg.sender, feeAmount);
         }
 
@@ -233,11 +233,9 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
             isActive: true,
             amount: escrowedAmount,
             depositTimestamp: block.timestamp,
-
             releaseTimestamp: releaseTimestamp,
             feePaid: feeAmount,
             votesCast: 0
-
         });
 
         emit TokensDeposited(
@@ -259,48 +257,22 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
         emit EscrowStateChanged(msg.sender, true, escrowedAmount);
     }
 
-    /**
-     * @dev Release escrowed tokens
-     */
-    function release() external nonReentrant whenNotPausedOrEmergency {
-        EscrowData storage escrow = escrows[msg.sender];
-        require(escrow.isActive, "No active escrow for this user");
-        require(block.timestamp >= escrow.releaseTimestamp, "Voting period is not over yet");
-
-        uint256 amountToRelease = escrow.amount;
-        
-        // Update contract state
-        totalEscrowedAmount -= amountToRelease;
-        totalActiveEscrows--;
-        hasActiveEscrow[msg.sender] = false;
-        
-        escrow.isActive = false;
-        escrow.amount = 0;
-
-        require(token.transfer(msg.sender, amountToRelease), "Token release failed");
-
-        emit TokensReleased(msg.sender, amountToRelease, block.timestamp, false);
-        emit EscrowStateChanged(msg.sender, false, 0);
-    }
 
     /**
-     * @dev Allows a user to release their own tokens after the voting period.
+     * @dev Release escrowed tokens (merged logic from release and releaseTokens)
      */
     function releaseTokens() external nonReentrant whenNotPausedOrEmergency {
         EscrowData storage escrow = escrows[msg.sender];
         require(escrow.isActive, "No active escrow for this user");
-        require(
-            block.timestamp >= escrow.releaseTimestamp,
-            "Cannot release tokens before the release timestamp"
-        );
+        require(block.timestamp >= escrow.releaseTimestamp, "Voting period is not over yet");
 
         uint256 amount = escrow.amount;
-        
+
         // Update contract state
         totalEscrowedAmount -= amount;
         totalActiveEscrows--;
         hasActiveEscrow[msg.sender] = false;
-        
+
         escrow.isActive = false;
         escrow.amount = 0;
 
