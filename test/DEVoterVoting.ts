@@ -9,16 +9,7 @@ import { getAddress } from "viem";
 import "@nomicfoundation/hardhat-viem";
 import "@nomicfoundation/hardhat-viem/types";
 
-// Add type declaration for HardhatRuntimeEnvironment
-declare module "hardhat/types" {
-  interface HardhatRuntimeEnvironment {
-    viem: {
-      getWalletClients: () => Promise<any[]>;
-      deployContract: (name: string, args: any[]) => Promise<any>;
-      getPublicClient: () => Promise<any>;
-    };
-  }
-}
+// No need for manual type declaration as it's provided by @nomicfoundation/hardhat-viem
 
 describe("DEVoterVoting", function () {
   async function deployDEVoterVotingFixture() {
@@ -98,6 +89,22 @@ describe("DEVoterVoting", function () {
         // Allow for a small margin of error due to block time variations
         expect(Number(votingStartTime)).to.be.closeTo(startTimeBefore, 5);
       });
+
+      it("Should reject start with zero duration", async function () {
+        const { devoterVoting, owner } = await loadFixture(
+          deployDEVoterVotingFixture
+        );
+
+        // Try to start a voting period with zero duration
+        await expect(
+          devoterVoting.write.startVotingPeriod([BigInt(0)], {
+            account: owner.account,
+          })
+        ).to.be.rejectedWith("Invalid duration");
+
+        // Verify voting period is still inactive
+        expect(await devoterVoting.read.isVotingActive()).to.be.false;
+      });
     });
 
     describe("endVotingPeriod() tests", function () {
@@ -120,7 +127,7 @@ describe("DEVoterVoting", function () {
 
         
         // End the voting period
-        await devoterVoting.write.endVotingPeriod({
+        await devoterVoting.write.endVotingPeriod([], {
           account: owner.account,
         });
 
