@@ -10,6 +10,7 @@ import "@nomicfoundation/hardhat-viem";
 import "@nomicfoundation/hardhat-viem/types";
 
 // No need for manual type declaration as it's provided by @nomicfoundation/hardhat-viem
+// No need for manual type declaration as it's provided by @nomicfoundation/hardhat-viem
 
 describe("DEVoterVoting", function () {
   async function deployDEVoterVotingFixture() {
@@ -111,6 +112,36 @@ describe("DEVoterVoting", function () {
 
         // Verify voting period is still inactive
         expect(await devoterVoting.read.isVotingActive()).to.be.false;
+      });
+
+      it("Should handle very short durations (1 second)", async function () {
+        const { devoterVoting, owner } = await loadFixture(
+          deployDEVoterVotingFixture
+        );
+
+        const duration = 1; // 1 second duration
+
+        // Get the current timestamp before starting the voting period
+        const startTimeBefore = await time.latest();
+        
+        // Start a voting period with very short duration
+        await devoterVoting.write.startVotingPeriod([BigInt(duration)], {
+          account: owner.account,
+        });
+        
+        // Get the actual values from the contract
+        const votingStartTime = await devoterVoting.read.votingStartTime();
+        const votingEndTime = await devoterVoting.read.votingEndTime();
+        const isVotingActive = await devoterVoting.read.isVotingActive();
+        
+        // Verify that votingEndTime equals votingStartTime + 1 second
+        expect(Number(votingEndTime)).to.equal(Number(votingStartTime) + duration);
+        
+        // Verify that the voting period is active
+        expect(isVotingActive).to.be.true;
+        
+        // Verify that votingStartTime is close to the current time when we started the period
+        expect(Number(votingStartTime)).to.be.closeTo(startTimeBefore, 5);
       });
     });
 
