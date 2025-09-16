@@ -9,7 +9,6 @@ import { getAddress } from "viem";
 import "@nomicfoundation/hardhat-viem";
 import "@nomicfoundation/hardhat-viem/types";
 
-// No need for manual type declaration as it's provided by @nomicfoundation/hardhat-viem
 
 describe("DEVoterVoting", function () {
   async function deployDEVoterVotingFixture() {
