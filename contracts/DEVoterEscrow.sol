@@ -73,12 +73,8 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
         uint256 releaseTime,
         bool wasForced
     );
-    event VoteCast(
-        address indexed user, 
-        uint256 indexed repositoryId, 
-        uint256 amount,
-        uint256 timestamp
-    );
+    // Removed unused VoteCast event. Only VoteCasted is used for voting actions.
+    // Rationale: Only one event is needed for vote actions to avoid confusion and redundancy.
     event FeeParametersUpdated(
         uint256 newFeePercentage, 
         address indexed newFeeCollector,
@@ -379,7 +375,7 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
         
         emit FeeBasisPointsUpdated(oldFeeBasisPoints, newFeeBasisPoints);
         emit FeeParametersUpdated(
-            (newFeeBasisPoints * 100) / BASIS_POINTS_DENOMINATOR, 
+            newFeeBasisPoints, // Now emits raw basis points for clarity instead of percentage
             feeWallet, 
             msg.sender
         );
@@ -397,7 +393,7 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
         
         emit FeeWalletUpdated(oldFeeWallet, newFeeWallet);
         emit FeeParametersUpdated(
-            (feeBasisPoints * 100) / BASIS_POINTS_DENOMINATOR, 
+            feeBasisPoints, // Now emits raw basis points for clarity instead of percentage
             newFeeWallet, 
             msg.sender
         );
@@ -691,10 +687,8 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
         return feeWallet;
     }
 
-    function getFeePercentage() external view returns (uint256) {
-        // Convert basis points to percentage for backward compatibility
-        return (feeBasisPoints * 100) / BASIS_POINTS_DENOMINATOR;
-    }
+    // Removed legacy getFeePercentage getter for clarity. Use getFeeInfo for raw basis points.
+    // Rationale: getFeeInfo provides all fee details in basis points, which is the standard for smart contracts.
 
     function getTokenAddress() external view returns (address) {
         return address(token);
