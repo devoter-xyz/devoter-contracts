@@ -9,22 +9,63 @@ import "@nomicfoundation/hardhat-viem/types";
 
 describe("RepositoryRegistry", function () {
   async function deployRepositoryRegistryFixture() {
-    const [owner, maintainer1, maintainer2, otherAccount] =
+    const [owner, maintainer1, maintainer2, otherAccount, feeWallet] =
       await hre.viem.getWalletClients();
 
+    // Deploy MockDEVToken
+    const mockDEVToken = await hre.viem.deployContract("MockDEVToken", [
+      getAddress(owner.account.address),
+      "Mock DEV Token",
+      "mDEV",
+    ]);
+
+    // Mint tokens to maintainers
+    const mintAmount = 1000n * 10n ** 18n;
+    await mockDEVToken.write.mintTo([
+      getAddress(maintainer1.account.address),
+      mintAmount,
+    ]);
+    await mockDEVToken.write.mintTo([
+      getAddress(maintainer2.account.address),
+      mintAmount,
+    ]);
+
+    // Set fee and fee wallet
+    const submissionFee = 10n * 10n ** 18n; // 10 tokens
+    const feeWalletAddr = getAddress(feeWallet.account.address);
+
+    // Deploy RepositoryRegistry with token, fee wallet, and fee
     const repositoryRegistry = await hre.viem.deployContract(
       "RepositoryRegistry",
-      [getAddress(owner.account.address)]
+      [
+        getAddress(owner.account.address),
+        mockDEVToken.address,
+        feeWalletAddr,
+        submissionFee,
+      ]
     );
+
+    // Approve registry to spend tokens for maintainers
+    await mockDEVToken.write.approve([
+      repositoryRegistry.address,
+      mintAmount,
+    ], { account: maintainer1.account });
+    await mockDEVToken.write.approve([
+      repositoryRegistry.address,
+      mintAmount,
+    ], { account: maintainer2.account });
 
     const publicClient = await hre.viem.getPublicClient();
 
     return {
       repositoryRegistry,
+      mockDEVToken,
       owner,
       maintainer1,
       maintainer2,
       otherAccount,
+      feeWallet,
+      submissionFee,
       publicClient,
     };
   }
@@ -159,8 +200,8 @@ describe("RepositoryRegistry", function () {
   });
 
   describe("Repository Submission", function () {
-    it("Should successfully submit a repository with valid inputs", async function () {
-      const { repositoryRegistry, maintainer1 } = await loadFixture(
+    it("Should successfully submit a repository with valid inputs and pay fee", async function () {
+      const { repositoryRegistry, maintainer1, feeWallet, mockDEVToken, submissionFee } = await loadFixture(
         deployRepositoryRegistryFixture
       );
 
@@ -169,12 +210,15 @@ describe("RepositoryRegistry", function () {
       const url = "https://github.com/test/repository";
       const tags = ["javascript", "blockchain", "testing"];
 
+      const feeWalletBefore = await mockDEVToken.read.balanceOf([feeWallet.account.address]);
+
       await repositoryRegistry.write.submitRepository(
         [name, description, url, tags],
         { account: maintainer1.account }
       );
 
       const repo = await repositoryRegistry.read.getRepositoryDetails([1n]);
+      const feeWalletAfter = await mockDEVToken.read.balanceOf([feeWallet.account.address]);
 
       expect(repo.name).to.equal(name);
       expect(repo.description).to.equal(description);
@@ -186,6 +230,26 @@ describe("RepositoryRegistry", function () {
       expect(repo.isActive).to.be.true;
       expect(Number(repo.submissionTime)).to.be.greaterThan(0);
       expect(repo.tags).to.deep.equal(tags);
+      expect(feeWalletAfter - feeWalletBefore).to.equal(submissionFee);
+    });
+
+    it("Should fail if not enough allowance for fee", async function () {
+      const { repositoryRegistry, maintainer1, mockDEVToken } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      // Remove approval
+      await mockDEVToken.write.approve([
+        repositoryRegistry.address,
+        0n,
+      ], { account: maintainer1.account });
+
+      await expect(
+        repositoryRegistry.write.submitRepository(
+          ["Name", "Desc", "https://github.com/test", ["tag"]],
+          { account: maintainer1.account }
+        )
+      ).to.be.rejected;
     });
 
     it("Should emit RepositorySubmitted event with correct parameters", async function () {

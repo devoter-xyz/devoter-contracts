@@ -4,7 +4,11 @@ pragma solidity ^0.8.28;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
 contract RepositoryRegistry is Ownable, ReentrancyGuard {
+    using SafeERC20 for IERC20;
     
     struct Repository {
         string name;
@@ -19,13 +23,25 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
     
     mapping(uint256 => Repository) private repositories;
     uint256 private repoCounter;
-    
-    // Event placeholders
-    event RepositorySubmitted(uint256 indexed id, address indexed maintainer);
+
+    // === Fee System ===
+    IERC20 public immutable token;
+    address public feeWallet;
+    uint256 public submissionFee;
+
+    // Events
+    event RepositorySubmitted(uint256 indexed id, address indexed maintainer, uint256 feePaid);
     event RepositoryUpdated(uint256 indexed id, address indexed maintainer);
     event RepositoryDeactivated(uint256 indexed id);
-    
-    constructor(address initialOwner) Ownable(initialOwner) {
+    event SubmissionFeeUpdated(uint256 oldFee, uint256 newFee);
+    event FeeWalletUpdated(address oldWallet, address newWallet);
+
+    constructor(address initialOwner, address _token, address _feeWallet, uint256 _submissionFee) Ownable(initialOwner) {
+        require(_token != address(0), "Token address cannot be zero");
+        require(_feeWallet != address(0), "Fee wallet cannot be zero");
+        token = IERC20(_token);
+        feeWallet = _feeWallet;
+        submissionFee = _submissionFee;
         repoCounter = 0;
     }
     
@@ -61,10 +77,14 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
         require(bytes(name).length > 0, "Repository name cannot be empty");
         require(bytes(url).length > 0, "Repository URL cannot be empty");
         require(tags.length > 0, "Tags are required");
-        
+
+        // Require fee payment
+        require(submissionFee > 0, "Submission fee not set");
+        token.safeTransferFrom(msg.sender, feeWallet, submissionFee);
+
         // Increment counter and create new repository
         repoCounter += 1;
-        
+
         // Store repository in mapping
         repositories[repoCounter] = Repository({
             name: name,
@@ -76,9 +96,21 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
             submissionTime: block.timestamp,
             tags: tags
         });
-        
+
         // Emit event
-        emit RepositorySubmitted(repoCounter, msg.sender);
+        emit RepositorySubmitted(repoCounter, msg.sender, submissionFee);
+    }
+
+    // === Admin Functions ===
+    function setSubmissionFee(uint256 newFee) external onlyOwner {
+        emit SubmissionFeeUpdated(submissionFee, newFee);
+        submissionFee = newFee;
+    }
+
+    function setFeeWallet(address newWallet) external onlyOwner {
+        require(newWallet != address(0), "Fee wallet cannot be zero");
+        emit FeeWalletUpdated(feeWallet, newWallet);
+        feeWallet = newWallet;
     }
 
     /**
