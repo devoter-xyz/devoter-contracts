@@ -370,22 +370,22 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         view 
         returns (uint256 amount, uint256 timestamp) 
     {
+        // Optimization: Return early if user hasn't voted for this repository.
         if (!hasUserVoted[user][repositoryId]) {
             return (0, 0);
         }
-        
+
         amount = userVotesByRepository[repositoryId][user];
-        
-        // Find timestamp from user votes array
+
+        // Optimization: Return timestamp immediately when found, avoiding unnecessary looping.
         Vote[] storage votes = userVotes[user];
         for (uint256 i = 0; i < votes.length; i++) {
             if (votes[i].repositoryId == repositoryId) {
-                timestamp = votes[i].timestamp;
-                break;
+                return (amount, votes[i].timestamp);
             }
         }
-        
-        return (amount, timestamp);
+        // Defensive: Should not reach here, but fallback to (amount, 0) if not found.
+        return (amount, 0);
     }
     
     /**
@@ -445,9 +445,7 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         remainingVotes[msg.sender][repositoryId] = amount;
         
         // Update repository totals
-        if (repositoryVotes[repositoryId].totalVotes == 0) {
-            repositoryVotes[repositoryId].voterCount = 1;
-        } else {
+        if (!hasUserVoted[msg.sender][repositoryId]) {
             repositoryVotes[repositoryId].voterCount++;
         }
         repositoryVotes[repositoryId].totalVotes += amount;
