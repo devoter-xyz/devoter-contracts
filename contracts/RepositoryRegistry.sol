@@ -52,12 +52,13 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
      * @param newDescription New description for the repository
      */
     function updateRepository(uint256 id, string calldata newDescription) external nonReentrant {
-        Repository storage repo = repositories[id];
-        require(repo.maintainer == msg.sender, "Not owner");
-        require(repo.isActive, "Inactive");
+    Repository storage repo = repositories[id];
+    require(repo.maintainer != address(0), "Repository does not exist");
+    require(repo.maintainer == msg.sender, "Not owner");
+    require(repo.isActive, "Inactive");
         
-        repo.description = newDescription;
-        emit RepositoryUpdated(id, msg.sender);
+    repo.description = newDescription;
+    emit RepositoryUpdated(id, msg.sender);
     }
 
     /**
@@ -72,7 +73,7 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
         string calldata description,
         string calldata url,
         string[] calldata tags
-    ) external nonReentrant {
+    ) external nonReentrant returns (uint256) {
         // Validate input parameters
         require(bytes(name).length > 0, "Repository name cannot be empty");
         require(bytes(url).length > 0, "Repository URL cannot be empty");
@@ -99,6 +100,7 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
 
         // Emit event
         emit RepositorySubmitted(repoCounter, msg.sender, submissionFee);
+        return repoCounter;
     }
 
     // === Admin Functions ===
