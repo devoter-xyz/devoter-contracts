@@ -79,6 +79,22 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
         require(bytes(url).length > 0, "Repository URL cannot be empty");
         require(tags.length > 0, "Tags are required");
 
+        // Check for duplicate repository name
+        for (uint256 i = 1; i <= repoCounter; i++) {
+            if (repositories[i].maintainer != address(0) && keccak256(abi.encodePacked(repositories[i].name)) == keccak256(abi.encodePacked(name))) {
+                revert("Repository name already exists");
+            }
+        }
+
+        // Check for duplicate tags
+        for (uint256 i = 0; i < tags.length; i++) {
+            for (uint256 j = i + 1; j < tags.length; j++) {
+                if (keccak256(abi.encodePacked(tags[i])) == keccak256(abi.encodePacked(tags[j]))) {
+                    revert("Duplicate tags are not allowed");
+                }
+            }
+        }
+
         // Require fee payment
         require(submissionFee > 0, "Submission fee not set");
         token.safeTransferFrom(msg.sender, feeWallet, submissionFee);
