@@ -95,9 +95,10 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
             }
         }
 
-        // Require fee payment
-        require(submissionFee > 0, "Submission fee not set");
-        token.safeTransferFrom(msg.sender, feeWallet, submissionFee);
+        // Transfer submission fee only when configured
+        if (submissionFee > 0) {
+            token.safeTransferFrom(msg.sender, feeWallet, submissionFee);
+        }
 
         // Increment counter and create new repository
         repoCounter += 1;
