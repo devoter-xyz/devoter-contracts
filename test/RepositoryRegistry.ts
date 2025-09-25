@@ -378,6 +378,44 @@ describe("RepositoryRegistry", function () {
       expect(repo.isActive).to.be.true;
     });
 
+    it("Should allow submissions when the fee is set to zero", async function () {
+      const {
+        repositoryRegistry,
+        maintainer1,
+        owner,
+        mockDEVToken,
+        feeWallet,
+      } = await loadFixture(deployRepositoryRegistryFixture);
+
+      await repositoryRegistry.write.setSubmissionFee([0n], {
+        account: owner.account,
+      });
+
+      const name = "Zero Fee Repo";
+      const description = "Repository created without a submission fee";
+      const url = "https://github.com/test/zerofee";
+      const tags = ["zero-fee"];
+
+      const feeWalletBefore = await mockDEVToken.read.balanceOf([
+        feeWallet.account.address,
+      ]);
+
+      await repositoryRegistry.write.submitRepository(
+        [name, description, url, tags],
+        { account: maintainer1.account }
+      );
+
+      const repo = await repositoryRegistry.read.getRepositoryDetails([1n]);
+      const feeWalletAfter = await mockDEVToken.read.balanceOf([
+        feeWallet.account.address,
+      ]);
+
+      expect(repo.name).to.equal(name);
+      expect(repo.description).to.equal(description);
+      expect(repo.isActive).to.be.true;
+      expect(feeWalletAfter).to.equal(feeWalletBefore);
+    });
+
     it("Should handle single character inputs correctly", async function () {
       const { repositoryRegistry, maintainer1 } = await loadFixture(
         deployRepositoryRegistryFixture
