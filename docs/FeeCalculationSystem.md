@@ -1,236 +1,159 @@
-# Fee Calculation System Documentation
+# Fee Calculation System
 
-## Overview
+## What this doc covers
 
-The DEVoterEscrow contract implements a comprehensive fee calculation system using basis points for precise fee management. This system provides accurate fee calculations, maximum fee limits, fee exemptions, and administrative controls.
+This document explains the fee system implemented in `DEVoterEscrow`. It describes:
 
-## Basis Points System
+- the basis-points model used for calculations
+- how fees are calculated and collected
+- exemption and administrative controls
+- rounding behaviour and common edge cases
 
-### What are Basis Points?
-- **1 basis point = 0.01%**
-- **100 basis points = 1%**
-- **10,000 basis points = 100%**
+## Basis points (bps) refresher
 
-### Constants
-- `BASIS_POINTS_DENOMINATOR = 10000` - Base for calculations
-- `MAX_FEE_BASIS_POINTS = 500` - Maximum 5% fee (500 basis points)
-- `MIN_FEE_BASIS_POINTS = 0` - Minimum 0% fee
+- 1 basis point (1 bps) = 0.01%
+- 100 bps = 1%
+- 10,000 bps = 100%
 
-## Fee Calculation Functions
+Key constants used in the contract:
 
-### `calculateFee(uint256 amount, address user)`
-Calculates the fee amount for a given deposit amount and user.
+- `BASIS_POINTS_DENOMINATOR = 10000` (the denominator for bps math)
+- `MAX_FEE_BASIS_POINTS = 500` (maximum fee: 5%)
+- `MIN_FEE_BASIS_POINTS = 0` (minimum fee: 0%)
 
-**Parameters:**
-- `amount` - The amount to calculate fee for
-- `user` - The user address (for exemption check)
+## Core formula
 
-**Returns:**
-- `feeAmount` - The calculated fee amount
+All fee calculations use integer arithmetic. The canonical formula used by `calculateFee` is:
 
-**Logic:**
-1. Returns 0 if amount is 0
-2. Returns 0 if user is fee exempt
-3. Returns 0 if fee basis points is 0
-4. Calculates: `(amount * feeBasisPoints) / BASIS_POINTS_DENOMINATOR`
-5. Ensures fee doesn't exceed the amount
+$$
+fee = \left\lfloor \frac{amount \times fee\_basis\_points}{BASIS\_POINTS\_DENOMINATOR} \right\rfloor
+$$
 
-### `calculateEscrowAmount(uint256 amount, address user)`
-Calculates both the fee and the amount that will be escrowed.
+In solidity this is implemented as:
 
-**Parameters:**
-- `amount` - The total amount to be deposited
-- `user` - The user address (for exemption check)
-
-**Returns:**
-- `escrowedAmount` - The amount that will be escrowed
-- `feeAmount` - The fee amount that will be charged
-
-### `previewFee(uint256 amount, address user)`
-Preview function for users to see fee calculations before depositing.
-
-**Parameters:**
-- `amount` - The amount to calculate fee for
-- `user` - The user address
-
-**Returns:**
-- `feeAmount` - The calculated fee amount
-- `escrowedAmount` - The amount that would be escrowed
-- `isExempt` - Whether the user is fee exempt
-
-## Fee Exemption System
-
-### Individual Exemptions
 ```solidity
-function setFeeExemption(address user, bool isExempt) external onlyOwner
+uint256 fee = (amount * feeBasisPoints) / BASIS_POINTS_DENOMINATOR;
 ```
 
-### Batch Exemptions
-```solidity
-function batchSetFeeExemptions(address[] calldata users, bool[] calldata exemptions) external onlyOwner
-```
+Notes:
 
-### Check Exemption Status
-```solidity
-function isFeeExempt(address user) external view returns (bool)
-```
+- Integer division truncates (rounds down). Small amounts may yield a zero fee.
+- The contract enforces: `feeBasisPoints <= MAX_FEE_BASIS_POINTS`.
+- For safety the computed fee is capped so it never exceeds `amount` (i.e. `fee = min(fee, amount)`).
 
-## Administrative Functions
+## Function behavior (summary)
 
-### Update Fee Basis Points
-```solidity
-function updateFeeBasisPoints(uint256 newFeeBasisPoints) external onlyOwner
-```
-- Enforces maximum 5% (500 basis points) limit
-- Enforces minimum 0% (0 basis points) limit
-- Emits `FeeBasisPointsUpdated` event
+- calculateFee(uint256 amount, address user) -> (uint256 fee)
 
-### Update Fee Wallet
-```solidity
-function updateFeeWallet(address newFeeWallet) external onlyOwner
-```
-- Rejects zero address
-- Emits `FeeWalletUpdated` event
+  - Returns 0 when `amount == 0`.
+  - Returns 0 when `isFeeExempt(user) == true`.
+  - Returns 0 when `feeBasisPoints == 0`.
+  - Otherwise returns the formula above, capped by `amount`.
 
-## Fee Collection
+- calculateEscrowAmount(uint256 amount, address user) -> (uint256 escrowedAmount, uint256 fee)
 
-### Automatic Collection
-Fees are automatically collected during the `deposit` function:
-1. Calculate fee using `calculateFee()`
-2. Transfer total amount from user to contract
-3. Transfer fee amount to fee wallet
-4. Escrow remaining amount
-5. Emit `FeeCollected` event
+  - Computes `fee` with `calculateFee` and returns `escrowedAmount = amount - fee`.
 
-### Fee Tracking
-Each escrow tracks the fee paid:
+- previewFee(uint256 amount, address user) -> (uint256 fee, uint256 escrowedAmount, bool isExempt)
+  - Read-only helper for clients to preview the result before calling `deposit`.
+
+## Fee collection flow (high level)
+
+During `deposit`:
+
+1. Call `calculateFee(amount, user)`.
+2. Transfer `amount` from the user to the contract (ERC20 `transferFrom`).
+3. Transfer `fee` from the contract to `feeWallet`.
+4. Create the escrow for `escrowedAmount = amount - fee`.
+5. Emit `FeeCollected` and `TokensDeposited` (or equivalent) events.
+
+Escrow data stores the `feePaid` so fees are traceable per-escrow.
+
 ```solidity
 struct EscrowData {
-    bool isActive;
-    uint256 amount;
-    uint256 depositTimestamp;
-    uint256 releaseTimestamp;
-    uint256 feePaid; // Track fee paid for this escrow
+        bool isActive;
+        uint256 amount; // amount escrowed (after fee)
+        uint256 depositTimestamp;
+        uint256 releaseTimestamp;
+        uint256 feePaid; // fee paid for this escrow
 }
 ```
 
-## View Functions
+## Exemptions and administration
 
-### `getFeeInfo()`
-Returns comprehensive fee information:
-- Current fee in basis points
-- Maximum allowed fee in basis points
-- Current fee wallet address
+- setFeeExemption(address user, bool isExempt) external onlyOwner
+- batchSetFeeExemptions(address[] calldata users, bool[] calldata exemptions) external onlyOwner
+- isFeeExempt(address user) external view returns (bool)
 
-### `getEscrowFeePaid(address user)`
-Returns the fee amount paid for a specific escrow.
+Admin controls:
 
-### Backward Compatibility
-```solidity
-function getFeePercentage() external view returns (uint256)
-```
-Converts basis points to percentage for legacy compatibility.
+- updateFeeBasisPoints(uint256 newFeeBasisPoints) external onlyOwner
+
+  - Enforced constraints: `MIN_FEE_BASIS_POINTS <= newFeeBasisPoints <= MAX_FEE_BASIS_POINTS`.
+  - Emits `FeeBasisPointsUpdated(old, new)`.
+
+- updateFeeWallet(address newFeeWallet) external onlyOwner
+  - Rejects zero address.
+  - Emits `FeeWalletUpdated(old, new)`.
 
 ## Events
 
-### Fee-Related Events
-- `FeeBasisPointsUpdated(uint256 oldFeeBasisPoints, uint256 newFeeBasisPoints)`
-- `FeeWalletUpdated(address indexed oldFeeWallet, address indexed newFeeWallet)`
-- `FeeExemptionUpdated(address indexed user, bool isExempt)`
-- `FeeCollected(address indexed user, uint256 feeAmount)`
+- `event FeeBasisPointsUpdated(uint256 indexed oldFeeBasisPoints, uint256 indexed newFeeBasisPoints)`
+- `event FeeWalletUpdated(address indexed oldFeeWallet, address indexed newFeeWallet)`
+- `event FeeExemptionUpdated(address indexed user, bool isExempt)`
+- `event FeeCollected(address indexed user, uint256 feeAmount)`
+- `event TokensDeposited(address indexed user, uint256 amount, uint256 feePaid, uint256 amountEscrowed, uint256 releaseTimestamp)`
 
-### Enhanced Deposit Event
-```solidity
-event TokensDeposited(
-    address indexed user, 
-    uint256 amount, 
-    uint256 feePaid, 
-    uint256 amountEscrowed, 
-    uint256 releaseTimestamp
-);
+## Examples
+
+Example 1 — typical deposit with 5% fee (contract max):
+
+```text
+amount = 1_000 * 10**18  // 1000 tokens with 18 decimals
+feeBasisPoints = 500     // 5%
+fee = floor(amount * 500 / 10000) = 50 * 10**18
+escrowed = amount - fee = 950 * 10**18
 ```
 
-## Usage Examples
+Example 2 — small amount rounding to zero fee:
 
-### Basic Fee Calculation
-```solidity
-// 10% fee (1000 basis points)
-uint256 amount = 1000 * 10**18; // 1000 tokens
-uint256 fee = (amount * 1000) / 10000; // 100 tokens
-uint256 escrowed = amount - fee; // 900 tokens
+```text
+amount = 1 * 10**12      // very small token amount relative to decimals
+feeBasisPoints = 500     // 5%
+fee = floor(amount * 500 / 10000) = 0  // becomes zero due to integer division
+escrowed = amount
 ```
 
-### Fee Exemption
-```solidity
-// Set user as fee exempt
-escrowContract.setFeeExemption(userAddress, true);
+Example 3 — fee exemption:
 
-// User deposits without fee
-uint256 amount = 1000 * 10**18;
-uint256 fee = escrowContract.calculateFee(amount, userAddress); // Returns 0
-uint256 escrowed = amount; // Full amount escrowed
+```text
+isFeeExempt(user) == true
+fee = 0
+escrowed = amount
 ```
 
-### Preview Before Deposit
-```solidity
-// User previews fee before depositing
-(uint256 fee, uint256 escrowed, bool exempt) = escrowContract.previewFee(amount, userAddress);
-```
+## Edge cases & notes
 
-## Security Features
+- Rounding: Solidity integer division rounds toward zero. Tests should assert expected rounding behavior for small amounts.
+- Cap: The fee is always capped by the deposited amount (defensive programming) even though math should not produce a larger fee.
+- Token decimals: Fee math is token-decimals-agnostic; however the effective human-perceived fee depends on token decimals. Use consistent units in UI (e.g., show values in token decimals).
+- Gas: `batchSetFeeExemptions` reduces repeated owner calls but may be gas-heavy for very large arrays; split into chunks if needed.
 
-### Maximum Fee Enforcement
-- Hard-coded maximum of 5% (500 basis points)
-- Prevents excessive fee extraction
-- Validated in constructor and update functions
+## Tests (what to cover)
 
-### Zero Address Protection
-- Rejects zero addresses for token and fee wallet
-- Prevents loss of funds
+- Basic calculation at several bps values (0, small, max).
+- Zero amount, fee = 0.
+- Rounding behaviour for small amounts.
+- Fee exemption on/off.
+- updateFeeBasisPoints enforcement (min/max and events).
+- updateFeeWallet rejects zero address and emits event.
+- deposit flow emits `FeeCollected` and stores `feePaid` on the escrow record.
 
-### Access Control
-- Only owner can update fee parameters
-- Only owner can set fee exemptions
-- Uses OpenZeppelin's `Ownable` pattern
+## Best practices
 
-### Reentrancy Protection
-- All state-changing functions use `nonReentrant` modifier
-- Prevents reentrancy attacks during fee collection
+1. Always call `previewFee` on the client before creating a deposit transaction.
+2. Keep UI and smart contract using the same token-decimal assumptions.
+3. Use exemptions sparingly and track them via events for auditability.
+4. When changing fees, notify users off-chain (fee changes affect costs immediately).
 
-## Gas Optimization
-
-### Efficient Calculations
-- Uses basis points for precise calculations
-- Minimal storage operations
-- Optimized for view functions
-
-### Batch Operations
-- `batchSetFeeExemptions` for efficient bulk updates
-- Reduces gas costs for multiple exemptions
-
-## Testing
-
-The fee system includes comprehensive tests covering:
-- Basic fee calculations
-- Edge cases (zero amounts, rounding)
-- Fee exemptions
-- Administrative functions
-- Maximum fee enforcement
-- Event emissions
-- Gas efficiency
-
-## Migration from Percentage System
-
-The contract maintains backward compatibility:
-- `getFeePercentage()` converts basis points to percentage
-- Existing integrations can continue working
-- New features use basis points for precision
-
-## Best Practices
-
-1. **Always preview fees** before depositing
-2. **Use basis points** for precise fee calculations
-3. **Set appropriate exemptions** for special users
-4. **Monitor fee collection** through events
-5. **Test edge cases** with small amounts
-6. **Validate fee parameters** before updates 
+---
