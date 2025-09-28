@@ -1,34 +1,3 @@
-
-    describe("Burning", function () {
-      it("Should allow a user to burn their own tokens", async function () {
-        const { mockDEVToken, owner } = await loadFixture(deployMockDEVTokenFixture);
-        const burnAmount = parseEther("100");
-        const initialBalance = await mockDEVToken.read.balanceOf([
-          getAddress(owner.account.address),
-        ]);
-        await mockDEVToken.write.burn([burnAmount]);
-        const finalBalance = await mockDEVToken.read.balanceOf([
-          getAddress(owner.account.address),
-        ]);
-        expect(finalBalance).to.equal(initialBalance - burnAmount);
-      });
-
-      it("Should not allow burning zero tokens", async function () {
-        const { mockDEVToken } = await loadFixture(deployMockDEVTokenFixture);
-        await expect(
-          mockDEVToken.write.burn([0n])
-        ).to.be.rejectedWith("ERC20: burn amount must be greater than zero");
-      });
-
-      it("Should not allow burning more tokens than balance", async function () {
-        const { mockDEVToken, otherAccount } = await loadFixture(deployMockDEVTokenFixture);
-        const burnAmount = parseEther("100");
-        // otherAccount has 0 tokens
-        await expect(
-          mockDEVToken.write.burn([burnAmount], { account: otherAccount.account })
-        ).to.be.rejected;
-      });
-    });
 import {
   time,
   loadFixture,
@@ -38,6 +7,37 @@ import hre from "hardhat";
 import { getAddress, parseGwei, parseEther } from "viem";
 
 describe("MockDEVToken", function () {
+
+  describe("Burning", function () {
+    it("Should allow a user to burn their own tokens", async function () {
+      const { mockDEVToken, owner } = await loadFixture(deployMockDEVTokenFixture);
+      const burnAmount = parseEther("100");
+      const initialBalance = await mockDEVToken.read.balanceOf([
+        getAddress(owner.account.address),
+      ]);
+      await mockDEVToken.write.burn([burnAmount]);
+      const finalBalance = await mockDEVToken.read.balanceOf([
+        getAddress(owner.account.address),
+      ]);
+      expect(finalBalance).to.equal(initialBalance - burnAmount);
+    });
+
+    it("Should not allow burning zero tokens", async function () {
+      const { mockDEVToken } = await loadFixture(deployMockDEVTokenFixture);
+      await expect(
+        mockDEVToken.write.burn([0n])
+      ).to.be.rejectedWith("ERC20: burn amount must be greater than zero");
+    });
+
+    it("Should not allow burning more tokens than balance", async function () {
+      const { mockDEVToken, otherAccount } = await loadFixture(deployMockDEVTokenFixture);
+      const burnAmount = parseEther("100");
+      // otherAccount has 0 tokens
+      await expect(
+        mockDEVToken.write.burn([burnAmount], { account: otherAccount.account })
+      ).to.be.rejected;
+    });
+  });
   async function deployMockDEVTokenFixture() {
     const [owner, otherAccount, thirdAccount] =
       await hre.viem.getWalletClients();
