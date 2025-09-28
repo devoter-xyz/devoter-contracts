@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.28;
+
 
 import "@thirdweb-dev/contracts/base/ERC20Vote.sol";
 
@@ -14,6 +15,15 @@ contract MockDEVToken is ERC20Vote {
         
         // Mint initial supply to default admin
         _mint(_defaultAdmin, initialSupply);
+    }
+
+        /**
+         * @notice Burns tokens from the caller's account
+         * @param amount The amount of tokens to burn
+         */
+    function burn(uint256 amount) public override {
+        require(amount > 0, "ERC20: burn amount must be greater than zero");
+        _burn(msg.sender, amount);
     }
 
     function _canMint(address _address) internal view virtual returns (bool) {
