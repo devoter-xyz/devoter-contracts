@@ -57,6 +57,7 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
     require(repo.maintainer == msg.sender, "Not owner");
     require(repo.isActive, "Inactive");
         
+    require(bytes(newDescription).length > 0, "Description cannot be empty");
     repo.description = newDescription;
     emit RepositoryUpdated(id, msg.sender);
     }
@@ -81,8 +82,13 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
 
         // Check for duplicate repository name
         for (uint256 i = 1; i <= repoCounter; i++) {
-            if (repositories[i].maintainer != address(0) && keccak256(abi.encodePacked(repositories[i].name)) == keccak256(abi.encodePacked(name))) {
-                revert("Repository name already exists");
+            if (repositories[i].maintainer != address(0)) {
+                if (keccak256(abi.encodePacked(repositories[i].name)) == keccak256(abi.encodePacked(name))) {
+                    revert("Repository name already exists");
+                }
+                if (keccak256(abi.encodePacked(repositories[i].githubUrl)) == keccak256(abi.encodePacked(url))) {
+                    revert("Repository URL already exists");
+                }
             }
         }
 
@@ -161,31 +167,40 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Get all active repositories
+     * @dev Get active repositories with pagination
+     * @param offset The starting index (0-based)
+     * @param limit The maximum number of repositories to return
      * @return Array of Repository structs that are currently active
      */
-    function getActiveRepositories() external view returns (Repository[] memory) {
-        // First pass: count active repositories
+    function getActiveRepositories(uint256 offset, uint256 limit) external view returns (Repository[] memory) {
+        // Gather all active repositories
         uint256 activeCount = 0;
         for (uint256 i = 1; i <= repoCounter; i++) {
             if (repositories[i].isActive && repositories[i].maintainer != address(0)) {
                 activeCount++;
             }
         }
-
-        // Create array with exact size needed
-        Repository[] memory activeRepos = new Repository[](activeCount);
-        
-        // Second pass: populate the array
+        Repository[] memory tempRepos = new Repository[](activeCount);
         uint256 index = 0;
         for (uint256 i = 1; i <= repoCounter; i++) {
             if (repositories[i].isActive && repositories[i].maintainer != address(0)) {
-                activeRepos[index] = repositories[i];
+                tempRepos[index] = repositories[i];
                 index++;
             }
         }
-
-        return activeRepos;
+        // Pagination
+        if (offset >= activeCount) {
+            return new Repository[](0);
+        }
+        uint256 end = offset + limit;
+        if (end > activeCount) {
+            end = activeCount;
+        }
+        Repository[] memory pagedRepos = new Repository[](end - offset);
+        for (uint256 i = offset; i < end; i++) {
+            pagedRepos[i - offset] = tempRepos[i];
+        }
+        return pagedRepos;
     }
 
     /**
