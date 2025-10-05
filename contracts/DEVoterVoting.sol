@@ -6,6 +6,10 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./DEVoterEscrow.sol";
 import "./RepositoryRegistry.sol";
 
+error WithdrawalNotAllowed(string reason);
+error InvalidWithdrawalAmount(uint256 requested, uint256 available);
+error WithdrawalDeadlinePassed(uint256 deadline, uint256 currentTime);
+
 /**
  * @title DEVoterVoting
  * @dev Main voting contract that interfaces with DEVoterEscrow and RepositoryRegistry
@@ -99,13 +103,15 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         uint256 timestamp
     );
     
-    event PartialWithdrawal(
-        address indexed user,
-        uint256 indexed repositoryId,
-        uint256 withdrawnAmount,
-        uint256 remainingAmount
-    );
+        event PartialWithdrawal(
+            address indexed user,
+            uint256 indexed repositoryId,
+            uint256 withdrawnAmount,
+            uint256 remainingAmount
+        );
     
+        event EmergencyWithdrawalRequiresManualEscrowUpdate(address user, uint256 amount);
+        event EmergencyWithdrawalExecuted(address user, uint256 repositoryId, uint256 amount, address admin);    
     /**
      * @dev Constructor to initialize the voting contract
      * @param _escrow Address of the DEVoterEscrow contract
@@ -520,49 +526,41 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
 
     // ===== ESCROW INTEGRATION FUNCTIONS =====
     
-    /**
-     * @dev Updates user's escrow balance by returning withdrawn vote tokens
-     * Will be fully implemented when DEVoterEscrow.returnVoteTokens is available
-     */
-    function updateEscrowBalance(address /*user*/, uint256 /*amount*/) internal view {
-        // Call escrow contract to return tokens
-        // Note: This requires the returnVoteTokens function to be implemented in DEVoterEscrow
-        // For now, we'll add a require statement that will fail gracefully until implemented
-        
-        // Uncomment the following lines when DEVoterEscrow.returnVoteTokens is implemented:
-        // bool success = escrowContract.returnVoteTokens(user, amount);
-        // require(success, "Failed to update escrow balance");
-        
-        // Temporary implementation - just validate the contract exists
-        require(address(escrowContract) != address(0), "Escrow contract not set");
-    }
-
     // ===== VOTE WITHDRAWAL FUNCTIONS =====
 
-    /**
-     * @dev Withdraw a vote for a repository (full or partial withdrawal)
-     * @param repositoryId ID of the repository to withdraw vote from
-     * @param amount Amount to withdraw (must be <= remaining votes)
-     * @notice Withdrawals are blocked within 24 hours of voting period end
-     */
-    function withdrawVote(uint256 repositoryId, uint256 amount) 
+    function withdrawVoteWithErrorHandling(uint256 repositoryId, uint256 amount) 
         external 
         nonReentrant 
         onlyDuringVoting 
     {
-        // Validate withdrawal using our new restriction logic
-        (bool allowed, string memory reason) = canWithdrawVote(msg.sender, repositoryId);
-        require(allowed, reason);
+        // Comprehensive validation with custom errors
+        if (!hasUserVoted[msg.sender][repositoryId]) {
+            revert WithdrawalNotAllowed("No vote found for this repository");
+        }
         
-        // Validate withdrawal amount using new validation function
-        (bool validAmount, string memory amountError) = validateWithdrawalAmount(msg.sender, repositoryId, amount);
-        require(validAmount, amountError);
+        uint256 withdrawalDeadline = votingEndTime - WITHDRAWAL_RESTRICTION_PERIOD;
+        if (block.timestamp >= withdrawalDeadline) {
+            revert WithdrawalDeadlinePassed(withdrawalDeadline, block.timestamp);
+        }
         
-        // Check if this is a full withdrawal for cleanup logic
-        bool isFull = isFullWithdrawal(msg.sender, repositoryId, amount);
+        uint256 available = getAvailableWithdrawalAmount(msg.sender, repositoryId);
+        if (amount == 0 || amount > available) {
+            revert InvalidWithdrawalAmount(amount, available);
+        }
         
-        // Update escrow balance before state changes
-        updateEscrowBalance(msg.sender, amount);
+        // Handle potential escrow failures
+        try escrowContract.returnVoteTokens(msg.sender, amount) returns (bool success) {
+            if (!success) {
+                revert WithdrawalNotAllowed("Escrow contract rejected withdrawal");
+            }
+        } catch Error(string memory reason) {
+            revert WithdrawalNotAllowed(string(abi.encodePacked("Escrow error: ", reason)));
+        } catch {
+            revert WithdrawalNotAllowed("Unknown escrow contract error");
+        }
+        
+        // Continue with withdrawal logic...
+        bool isFull = (amount == available);
         
         // Update withdrawal tracking
         remainingVotes[msg.sender][repositoryId] -= amount;
@@ -575,9 +573,12 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
             timestamp: block.timestamp,
             isActive: true
         }));
+        
         // Update repository vote totals and user vote tracking
         updateRepositoryTotals(msg.sender, repositoryId, amount, isFull);
+        
         emit VoteWithdrawn(msg.sender, repositoryId, amount, block.timestamp);
+        
         // Emit partial withdrawal event if there are remaining votes
         if (!isFull) {
             emit PartialWithdrawal(
@@ -587,6 +588,27 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
                 remainingVotes[msg.sender][repositoryId]
             );
         }
+    }
+
+    function emergencyWithdrawalOverride(address user, uint256 repositoryId, uint256 amount) 
+        external onlyOwner 
+    {
+        // Admin function to handle emergency withdrawal scenarios
+        require(hasUserVoted[user][repositoryId], "User has no vote to withdraw");
+        
+        // Force withdrawal without normal restrictions
+        totalWithdrawn[user][repositoryId] += amount;
+        repositoryVotes[repositoryId].totalVotes -= amount;
+        
+        // Try to update escrow, but don't fail if it doesn't work
+        try escrowContract.returnVoteTokens(user, amount) {
+            // Success - no action needed
+        } catch {
+            // Log for manual resolution
+            emit EmergencyWithdrawalRequiresManualEscrowUpdate(user, amount);
+        }
+        
+        emit EmergencyWithdrawalExecuted(user, repositoryId, amount, msg.sender);
     }
     /**
      * @dev Internal function to update repository vote totals and user vote tracking on withdrawal
