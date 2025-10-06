@@ -1,0 +1,52 @@
+Attempt 1 failed with status 429. Retrying with backoff... ApiError: {"error":{"message":"{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits.\",\n    \"status\": \"RESOURCE_EXHAUSTED\"\n  }\n}\n","code":429,"status":"Too Many Requests"}}
+    at throwErrorIfNotOK (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/genai/dist/node/index.mjs:14072:30)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/genai/dist/node/index.mjs:13863:13
+    at async Models.generateContentStream (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/genai/dist/node/index.mjs:15204:24)
+    at async LoggingContentGenerator.generateContentStream (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/loggingContentGenerator.js:57:22)
+    at async retryWithBackoff (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/utils/retry.js:62:20)
+    at async GeminiChat.makeApiCallAndProcessStream (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/geminiChat.js:266:32)
+    at async file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/geminiChat.js:214:40
+    at async Turn.run (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/turn.js:59:30)
+    at async GeminiClient.sendMessageStream (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/client.js:405:26) {
+  status: 429
+}
+Attempt 2 failed with status 429. Retrying with backoff... ApiError: {"error":{"message":"{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits.\",\n    \"status\": \"RESOURCE_EXHAUSTED\"\n  }\n}\n","code":429,"status":"Too Many Requests"}}
+    at throwErrorIfNotOK (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/genai/dist/node/index.mjs:14072:30)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/genai/dist/node/index.mjs:13863:13
+    at async Models.generateContentStream (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/genai/dist/node/index.mjs:15204:24)
+    at async LoggingContentGenerator.generateContentStream (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/loggingContentGenerator.js:57:22)
+    at async retryWithBackoff (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/utils/retry.js:62:20)
+    at async GeminiChat.makeApiCallAndProcessStream (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/geminiChat.js:266:32)
+    at async file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/geminiChat.js:214:40
+    at async Turn.run (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/turn.js:59:30)
+    at async GeminiClient.sendMessageStream (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/client.js:405:26) {
+  status: 429
+}
+Attempt 3 failed with status 429. Retrying with backoff... ApiError: {"error":{"message":"{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits.\",\n    \"status\": \"RESOURCE_EXHAUSTED\"\n  }\n}\n","code":429,"status":"Too Many Requests"}}
+    at throwErrorIfNotOK (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/genai/dist/node/index.mjs:14072:30)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/genai/dist/node/index.mjs:13863:13
+    at async Models.generateContentStream (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/genai/dist/node/index.mjs:15204:24)
+    at async LoggingContentGenerator.generateContentStream (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/loggingContentGenerator.js:57:22)
+    at async retryWithBackoff (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/utils/retry.js:62:20)
+    at async GeminiChat.makeApiCallAndProcessStream (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/geminiChat.js:266:32)
+    at async file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/geminiChat.js:214:40
+    at async Turn.run (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/turn.js:59:30)
+    at async GeminiClient.sendMessageStream (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/client.js:405:26) {
+  status: 429
+}
+Attempt 4 failed with status 429. Retrying with backoff... ApiError: {"error":{"message":"{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits.\",\n    \"status\": \"RESOURCE_EXHAUSTED\"\n  }\n}\n","code":429,"status":"Too Many Requests"}}
+    at throwErrorIfNotOK (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/genai/dist/node/index.mjs:14072:30)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/genai/dist/node/index.mjs:13863:13
+    at async Models.generateContentStream (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/genai/dist/node/index.mjs:15204:24)
+    at async LoggingContentGenerator.generateContentStream (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/loggingContentGenerator.js:57:22)
+    at async retryWithBackoff (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/utils/retry.js:62:20)
+    at async GeminiChat.makeApiCallAndProcessStream (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/geminiChat.js:266:32)
+    at async file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/geminiChat.js:214:40
+    at async Turn.run (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/turn.js:59:30)
+    at async GeminiClient.sendMessageStream (file:///root/.nvm/versions/node/v22.18.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/client.js:405:26) {
+  status: 429
+}
