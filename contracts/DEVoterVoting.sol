@@ -499,7 +499,7 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
      * @return availableAmount Amount available for withdrawal
      */
     function getAvailableWithdrawalAmount(address user, uint256 repositoryId) 
-        external view returns (uint256 availableAmount) 
+        internal view returns (uint256 availableAmount) 
     {
         if (!hasUserVoted[user][repositoryId]) {
             return 0;
@@ -520,7 +520,7 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
     function isFullWithdrawal(address user, uint256 repositoryId, uint256 amount)
         internal view returns (bool isFull)
     {
-        uint256 availableAmount = this.getAvailableWithdrawalAmount(user, repositoryId);
+        uint256 availableAmount = getAvailableWithdrawalAmount(user, repositoryId);
         return amount == availableAmount;
     }
 
@@ -590,27 +590,43 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         }
     }
 
-    function emergencyWithdrawalOverride(address user, uint256 repositoryId, uint256 amount) 
-        external onlyOwner 
-    {
-        // Admin function to handle emergency withdrawal scenarios
-        require(hasUserVoted[user][repositoryId], "User has no vote to withdraw");
-        
-        // Force withdrawal without normal restrictions
-        totalWithdrawn[user][repositoryId] += amount;
-        repositoryVotes[repositoryId].totalVotes -= amount;
-        
-        // Try to update escrow, but don't fail if it doesn't work
-        try escrowContract.returnVoteTokens(user, amount) {
-            // Success - no action needed
-        } catch {
-            // Log for manual resolution
-            emit EmergencyWithdrawalRequiresManualEscrowUpdate(user, amount);
-        }
-        
-        emit EmergencyWithdrawalExecuted(user, repositoryId, amount, msg.sender);
-    }
-    /**
+        function emergencyWithdrawalOverride(address user, uint256 repositoryId, uint256 amount)
+            external onlyOwner
+        {
+            require(hasUserVoted[user][repositoryId], "User has no vote to withdraw");
+    
+            uint256 available = getAvailableWithdrawalAmount(user, repositoryId);
+            uint256 actualWithdrawalAmount;
+    
+            if (amount == 0) {
+                revert InvalidWithdrawalAmount(amount, available); // Cannot withdraw 0
+            }
+    
+            if (amount > available) {
+                actualWithdrawalAmount = available; // Cap at available
+            } else {
+                actualWithdrawalAmount = amount; // Use the requested amount
+            }
+    
+            // Update withdrawal tracking
+            remainingVotes[user][repositoryId] -= actualWithdrawalAmount;
+            totalWithdrawn[user][repositoryId] += actualWithdrawalAmount;
+    
+            bool isFull = (actualWithdrawalAmount == available);
+    
+            // Update repository vote totals and user vote tracking
+            updateRepositoryTotals(user, repositoryId, actualWithdrawalAmount, isFull);
+    
+            // Try to update escrow, but don't fail if it doesn't work
+            try escrowContract.returnVoteTokens(user, actualWithdrawalAmount) {
+                // Success - no action needed
+            } catch {
+                // Log for manual resolution
+                emit EmergencyWithdrawalRequiresManualEscrowUpdate(user, actualWithdrawalAmount);
+            }
+    
+            emit EmergencyWithdrawalExecuted(user, repositoryId, actualWithdrawalAmount, msg.sender);
+        }    /**
      * @dev Internal function to update repository vote totals and user vote tracking on withdrawal
      * @param user Address of the user
      * @param repositoryId ID of the repository

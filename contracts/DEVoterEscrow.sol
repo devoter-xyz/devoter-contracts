@@ -14,6 +14,7 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     // Access Control Roles
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant EMERGENCY_ROLE = keccak256("EMERGENCY_ROLE");
+    bytes32 public constant VOTING_CONTRACT_ROLE = keccak256("VOTING_CONTRACT_ROLE");
 
     // Constants for fee calculation
     uint256 public constant BASIS_POINTS_DENOMINATOR = 10000; // 100% = 10000 basis points
@@ -58,6 +59,8 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     // Mappings for vote tracking
     mapping(address => mapping(uint256 => uint256)) public userVotesPerRepo;
     mapping(uint256 => uint256) public totalVotesPerRepo;
+
+    address public devoterVotingContractAddress; // New state variable
 
 
     event TokensDeposited(
@@ -133,6 +136,22 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     modifier onlyEmergency() {
         require(hasRole(EMERGENCY_ROLE, msg.sender) || owner() == msg.sender, "Caller does not have emergency role");
         _;
+    }
+
+    modifier onlyVotingContract() {
+        require(msg.sender == devoterVotingContractAddress, "Caller is not the DEVoterVoting contract");
+        _;
+    }
+
+    /**
+     * @dev Sets the address of the DEVoterVoting contract and grants it the VOTING_CONTRACT_ROLE.
+     * @param _votingContractAddress The address of the DEVoterVoting contract.
+     */
+    function setVotingContractAddress(address _votingContractAddress) external onlyOwner {
+        require(_votingContractAddress != address(0), "Invalid voting contract address");
+        devoterVotingContractAddress = _votingContractAddress;
+        _grantRole(VOTING_CONTRACT_ROLE, _votingContractAddress);
+        // Optionally, revoke from previous if needed, but for initial setup, granting is enough.
     }
 
     modifier whenNotPausedOrEmergency() {
@@ -301,6 +320,35 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
         emit TokensForceReleased(user, amount, msg.sender);
         emit TokensReleased(user, amount, block.timestamp, true);
         emit EscrowStateChanged(user, false, 0);
+    }
+
+    /**
+     * @dev Allows the DEVoterVoting contract to return a specific amount of vote tokens to a user.
+     * @param user The user whose tokens are to be returned.
+     * @param amount The amount of tokens to return.
+     */
+    function returnVoteTokens(address user, uint256 amount) external onlyVotingContract nonReentrant returns (bool) {
+        EscrowData storage escrow = escrows[user];
+        require(escrow.isActive, "No active escrow for this user");
+        require(amount > 0, "Amount must be greater than 0");
+        require(escrow.amount >= amount, "Insufficient escrow balance for withdrawal");
+
+        // Update escrowed amount
+        escrow.amount -= amount;
+
+        // If escrowed amount becomes 0, deactivate escrow
+        if (escrow.amount == 0) {
+            escrow.isActive = false;
+            totalActiveEscrows--;
+            hasActiveEscrow[user] = false;
+        }
+
+        totalEscrowedAmount -= amount;
+        token.safeTransfer(user, amount);
+
+        emit TokensReleased(user, amount, block.timestamp, true); // Consider if a new event is needed
+        emit EscrowStateChanged(user, escrow.isActive, escrow.amount);
+        return true;
     }
 
     // Emergency Functions
