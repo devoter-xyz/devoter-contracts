@@ -626,6 +626,16 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
             }
     
             emit EmergencyWithdrawalExecuted(user, repositoryId, actualWithdrawalAmount, msg.sender);
+
+            // Emit partial withdrawal event if there are remaining votes
+            if (!isFull) {
+                emit PartialWithdrawal(
+                    user,
+                    repositoryId,
+                    actualWithdrawalAmount,
+                    remainingVotes[user][repositoryId]
+                );
+            }
         }    /**
      * @dev Internal function to update repository vote totals and user vote tracking on withdrawal
      * @param user Address of the user
