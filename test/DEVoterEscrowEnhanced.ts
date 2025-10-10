@@ -370,6 +370,57 @@ describe("DEVoterEscrow Enhanced Features", function () {
       expect(receipt.logs.length).to.be.greaterThan(0);
     });
 
+    it("Should correctly adjust votesCast when tokens are returned", async function () {
+      const { dEVoterEscrow, mockDEVToken, owner, user, votingPeriod } =
+        await loadFixture(deployContractsFixture);
+
+      // Set the voting contract address (owner can do this)
+      await dEVoterEscrow.write.setVotingContractAddress(
+        [getAddress(owner.account.address)], // Using owner as mock voting contract
+        { account: owner.account }
+      );
+
+      const depositAmount = parseEther("100");
+      await dEVoterEscrow.write.deposit([depositAmount], {
+        account: user.account,
+      });
+
+      const userAddress = getAddress(user.account.address);
+      let escrow = await dEVoterEscrow.read.escrows([userAddress]);
+      const initialEscrowedAmount = escrow[1];
+      expect(escrow[5]).to.equal(0n); // votesCast should be 0 initially
+
+      // Cast some votes
+      const repositoryId = 1n;
+      const voteAmount = parseEther("30");
+      await dEVoterEscrow.write.castVote([repositoryId, voteAmount], {
+        account: user.account,
+      });
+
+      escrow = await dEVoterEscrow.read.escrows([userAddress]);
+      expect(escrow[5]).to.equal(voteAmount); // votesCast should be voteAmount
+
+      // Return some tokens (less than votesCast)
+      const returnAmount1 = parseEther("10");
+      await dEVoterEscrow.write.returnVoteTokens([userAddress, returnAmount1], {
+        account: owner.account, // Mock voting contract
+      });
+
+      escrow = await dEVoterEscrow.read.escrows([userAddress]);
+      expect(escrow[1]).to.equal(initialEscrowedAmount - returnAmount1); // amount adjusted
+      expect(escrow[5]).to.equal(voteAmount - returnAmount1); // votesCast adjusted
+
+      // Return more tokens (more than remaining votesCast, should clamp to 0)
+      const returnAmount2 = parseEther("50"); // (30 - 10) = 20 remaining votesCast
+      await dEVoterEscrow.write.returnVoteTokens([userAddress, returnAmount2], {
+        account: owner.account, // Mock voting contract
+      });
+
+      escrow = await dEVoterEscrow.read.escrows([userAddress]);
+      expect(escrow[1]).to.equal(initialEscrowedAmount - returnAmount1 - returnAmount2); // amount adjusted
+      expect(escrow[5]).to.equal(0n); // votesCast clamped to 0
+    });
+
     it("Should not allow voting without active escrow", async function () {
       const { dEVoterEscrow, user } = await loadFixture(deployContractsFixture);
 
@@ -377,7 +428,7 @@ describe("DEVoterEscrow Enhanced Features", function () {
         dEVoterEscrow.write.castVote([1n, parseEther("50")], {
           account: user.account,
         })
-      ).to.be.rejectedWith("No active escrow for this user");
+      ).to.be.rejectedWith("No active escrow");
     });
 
     it("Should not allow voting with amount greater than escrowed", async function () {
@@ -393,7 +444,7 @@ describe("DEVoterEscrow Enhanced Features", function () {
         dEVoterEscrow.write.castVote([1n, parseEther("100")], {
           account: user.account,
         })
-      ).to.be.rejectedWith("Insufficient voting power");
+      ).to.be.rejectedWith("Insufficient vote balance");
     });
   });
 

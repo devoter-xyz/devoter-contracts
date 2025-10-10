@@ -195,7 +195,7 @@ describe("RepositoryRegistry", function () {
         repositoryRegistry.write.updateRepository([999n, "Update attempt"], {
           account: maintainer1.account,
         })
-      ).to.be.rejectedWith("Not owner");
+      ).to.be.rejectedWith("Repository does not exist");
     });
   });
 
