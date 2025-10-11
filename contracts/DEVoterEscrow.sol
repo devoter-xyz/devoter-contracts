@@ -334,6 +334,8 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
         require(escrow.amount >= amount, "Insufficient escrow balance for withdrawal");
 
         // Update escrowed amount
+        // Adjust votesCast to maintain invariant votesCast <= amount
+        escrow.votesCast = escrow.votesCast > amount ? escrow.votesCast - amount : 0;
         escrow.amount -= amount;
 
         // If escrowed amount becomes 0, deactivate escrow

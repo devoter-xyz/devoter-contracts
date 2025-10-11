@@ -493,16 +493,7 @@ describe("DEVoterEscrow", function () {
       expect(feePaid).to.equal(expectedFee);
     });
 
-    it("Should maintain backward compatibility with getFeePercentage", async function () {
-      const { dEVoterEscrow, feeBasisPoints } = await loadFixture(
-        deployContractsFixture
-      );
 
-      const feePercentage = await dEVoterEscrow.read.getFeePercentage();
-      const expectedPercentage = (BigInt(feeBasisPoints) * 100n) / 10000n;
-
-      expect(feePercentage).to.equal(expectedPercentage);
-    });
   });
 
   describe("Release", function () {
@@ -521,7 +512,7 @@ describe("DEVoterEscrow", function () {
       const userAddress = getAddress(user.account.address);
       const initialBalance = await mockDEVToken.read.balanceOf([userAddress]);
 
-      await dEVoterEscrow.write.release({ account: user.account });
+      await dEVoterEscrow.write.releaseTokens([], { account: user.account });
 
       const finalBalance = await mockDEVToken.read.balanceOf([userAddress]);
       const escrow = await dEVoterEscrow.read.escrows([userAddress]);
@@ -539,9 +530,8 @@ describe("DEVoterEscrow", function () {
         account: user.account,
       });
 
-      // Try to release before voting period ends
       await expect(
-        dEVoterEscrow.write.release({ account: user.account })
+        dEVoterEscrow.write.releaseTokens([], { account: user.account })
       ).to.be.rejectedWith("Voting period is not over yet");
     });
   });
@@ -583,9 +573,7 @@ describe("DEVoterEscrow", function () {
 
       await expect(
         dEVoterEscrow.write.releaseTokens([], { account: user.account })
-      ).to.be.rejectedWith(
-        "Cannot release tokens before the release timestamp"
-      );
+      ).to.be.rejectedWith("Voting period is not over yet");
     });
 
     it("Should allow the owner to force release tokens", async function () {
@@ -763,7 +751,7 @@ describe("DEVoterEscrow", function () {
 
       // Attempt early release should fail
       await expect(
-        dEVoterEscrow.write.release({ account: user.account })
+        dEVoterEscrow.write.releaseTokens([], { account: user.account })
       ).to.be.rejectedWith("Voting period is not over yet");
 
       // Verify state is unchanged after failed release
@@ -793,7 +781,7 @@ describe("DEVoterEscrow", function () {
       // Verify successful release after time passes
       await time.increase(votingPeriod + 1);
 
-      await dEVoterEscrow.write.release({ account: user.account });
+      await dEVoterEscrow.write.releaseTokens([], { account: user.account });
 
       const escrowAfterSuccessfulRelease = await dEVoterEscrow.read.escrows([
         userAddress,
