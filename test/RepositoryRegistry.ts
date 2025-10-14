@@ -4,7 +4,7 @@ import {
 } from "@nomicfoundation/hardhat-toolbox-viem/network-helpers";
 import { expect } from "chai";
 import hre from "hardhat";
-import { getAddress } from "viem";
+import { getAddress, parseAbiItem, encodeEventTopics, keccak256, decodeEventLog } from "viem";
 import "@nomicfoundation/hardhat-viem/types";
 
 describe("RepositoryRegistry", function () {
@@ -128,8 +128,32 @@ describe("RepositoryRegistry", function () {
 
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
-      // Verify that the transaction emitted at least one event (the RepositoryUpdated event)
-      expect(receipt.logs).to.have.lengthOf.at.least(1);
+      // Verify that the transaction emitted the RepositoryUpdated event with correct data
+      const updateEvents = receipt.logs.filter(
+        (log) =>
+          log.address.toLowerCase() === repositoryRegistry.address.toLowerCase() &&
+          log.topics[0] ===
+            encodeEventTopics({
+              abi: [parseAbiItem('event RepositoryUpdated(uint256 indexed id, address indexed maintainer, uint256 newDescriptionLength)')],
+              eventName: 'RepositoryUpdated',
+            })[0]
+      );
+
+      expect(updateEvents).to.have.lengthOf(1);
+      const decodedEvent = decodeEventLog({
+        abi: repositoryRegistry.abi,
+        eventName: "RepositoryUpdated",
+        topics: updateEvents[0].topics,
+        data: updateEvents[0].data,
+      });
+
+      expect(decodedEvent.args.id).to.equal(1n);
+      expect(decodedEvent.args.maintainer.toLowerCase()).to.equal(
+        maintainer1.account.address.toLowerCase()
+      );
+      expect(decodedEvent.args.newDescriptionLength).to.equal(
+        BigInt(newDescription.length)
+      );
       expect(receipt.status).to.equal("success");
     });
 
@@ -196,6 +220,33 @@ describe("RepositoryRegistry", function () {
           account: maintainer1.account,
         })
       ).to.be.rejectedWith("Repository does not exist");
+    });
+
+    it("Should reject update with description exceeding max length", async function () {
+      const { repositoryRegistry, maintainer1 } = await loadFixture(
+        deployRepositoryRegistryFixture
+      );
+
+      // Submit a repository
+      await repositoryRegistry.write.submitRepository(
+        [
+          "Test Repo",
+          "Original description",
+          "https://github.com/test/repo",
+          ["tag1"],
+        ],
+        { account: maintainer1.account }
+      );
+
+      // Create a description longer than 1000 characters
+      const longDescription = "A".repeat(1001);
+
+      // Try to update with too long description
+      await expect(
+        repositoryRegistry.write.updateRepository([1n, longDescription], {
+          account: maintainer1.account,
+        })
+      ).to.be.rejectedWith("Description too long");
     });
   });
 
@@ -471,7 +522,7 @@ describe("RepositoryRegistry", function () {
         deployRepositoryRegistryFixture
       );
 
-      const beforeSubmission = BigInt(Math.floor(Date.now() / 1000));
+      const beforeSubmission = await time.latest();
 
       await repositoryRegistry.write.submitRepository(
         [
@@ -483,16 +534,12 @@ describe("RepositoryRegistry", function () {
         { account: maintainer1.account }
       );
 
-      const afterSubmission = BigInt(Math.floor(Date.now() / 1000));
+      const afterSubmission = await time.latest();
       const repo = await repositoryRegistry.read.getRepositoryDetails([1n]);
 
       // Allow for some block time variance (submission time should be close to current time)
-      expect(Number(repo.submissionTime)).to.be.greaterThanOrEqual(
-        Number(beforeSubmission) - 60
-      );
-      expect(Number(repo.submissionTime)).to.be.lessThanOrEqual(
-        Number(afterSubmission) + 60
-      );
+      expect(Number(repo.submissionTime)).to.be.greaterThanOrEqual(Number(beforeSubmission));
+      expect(Number(repo.submissionTime)).to.be.lessThanOrEqual(Number(afterSubmission));
     });
 
     it("Should allow same maintainer to submit multiple repositories", async function () {
@@ -626,7 +673,7 @@ describe("RepositoryRegistry", function () {
         expect(repo.isActive).to.be.true;
       });
 
-      it("Should handle very long descriptions", async function () {
+      it("Should reject very long descriptions", async function () {
         const { repositoryRegistry, maintainer1 } = await loadFixture(
           deployRepositoryRegistryFixture
         );
@@ -643,21 +690,17 @@ describe("RepositoryRegistry", function () {
         );
 
         // Create a very long description (1000+ characters)
-        const longDescription =
-          "A".repeat(1000) +
-          " This is a very long description with repeated characters. ".repeat(
-            20
-          );
-        await repositoryRegistry.write.updateRepository([1n, longDescription], {
-          account: maintainer1.account,
-        });
+        const longDescription = "A".repeat(1001);
 
-        const repo = await repositoryRegistry.read.getRepositoryDetails([1n]);
-        expect(repo.description).to.equal(longDescription);
-        expect(repo.description.length).to.be.greaterThan(1000);
+        // Try to update with too long description
+        await expect(
+          repositoryRegistry.write.updateRepository([1n, longDescription], {
+            account: maintainer1.account,
+          })
+        ).to.be.rejectedWith("Description too long");
       });
 
-      it("Should handle empty string description", async function () {
+      it("Should reject empty string description", async function () {
         const { repositoryRegistry, maintainer1 } = await loadFixture(
           deployRepositoryRegistryFixture
         );
@@ -675,16 +718,11 @@ describe("RepositoryRegistry", function () {
 
         // Update with empty description
         const emptyDescription = "";
-        await repositoryRegistry.write.updateRepository(
-          [1n, emptyDescription],
-          {
+        await expect(
+          repositoryRegistry.write.updateRepository([1n, emptyDescription], {
             account: maintainer1.account,
-          }
-        );
-
-        const repo = await repositoryRegistry.read.getRepositoryDetails([1n]);
-        expect(repo.description).to.equal(emptyDescription);
-        expect(repo.isActive).to.be.true;
+          })
+        ).to.be.rejectedWith("Description cannot be empty");
       });
     });
 
