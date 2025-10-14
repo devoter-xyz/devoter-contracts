@@ -125,3 +125,14 @@ This project follows a standard Hardhat project structure:
 
 **Note:** This project uses `npm` as the package manager.
 
+## Hardhat Ignition Usage
+
+This project utilizes Hardhat Ignition for declarative and robust smart contract deployments.
+
+To deploy a module (e.g., `DEVoterEscrowModule`), use the following command:
+
+```bash
+npx hardhat ignition deploy DEVoterEscrowModule
+```
+
+You can specify network and parameters as needed. Refer to the Hardhat Ignition documentation for advanced usage.
