@@ -34,7 +34,7 @@ contract MockDEVToken is ERC20Vote {
      * @param amount The amount of tokens to burn.
      */
     function burn(uint256 amount) public override {
-        require(amount > 0, "ERC20: burn amount must be greater than zero");
+        require(amount > 0, "MockDEVToken: burn amount must be greater than zero");
         _burn(msg.sender, amount);
     }
 
@@ -55,9 +55,9 @@ contract MockDEVToken is ERC20Vote {
      * @param amount The amount of tokens to mint.
      */
     function mintTo(address to, uint256 amount) public override {
-        require(to != address(0), "ERC20: mint to the zero address");
-        require(amount > 0, "ERC20: mint amount must be greater than zero");
-        require(_canMint(msg.sender), "ERC20: caller is not authorized to mint");
+        require(to != address(0), "MockDEVToken: cannot mint to the zero address");
+        require(amount > 0, "MockDEVToken: mint amount must be greater than zero");
+        require(_canMint(msg.sender), "MockDEVToken: caller not authorized to mint");
         _mint(to, amount);
     }
 
@@ -68,11 +68,11 @@ contract MockDEVToken is ERC20Vote {
      * @param amounts Array of amounts to mint to each address.
      */
     function batchMintTo(address[] calldata to, uint256[] calldata amounts) public {
-        require(to.length == amounts.length, "ERC20: arrays must have the same length");
-        require(_canMint(msg.sender), "ERC20: caller is not authorized to mint");
+        require(to.length == amounts.length, "MockDEVToken: recipient and amount arrays must have same length");
+        require(_canMint(msg.sender), "MockDEVToken: caller not authorized to batch mint");
         for (uint256 i = 0; i < to.length; i++) {
-            require(to[i] != address(0), "ERC20: mint to the zero address");
-            require(amounts[i] > 0, "ERC20: mint amount must be greater than zero");
+            require(to[i] != address(0), "MockDEVToken: cannot mint to the zero address");
+            require(amounts[i] > 0, "MockDEVToken: mint amount must be greater than zero");
             _mint(to[i], amounts[i]);
         }
     }
