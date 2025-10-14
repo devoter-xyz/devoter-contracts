@@ -26,7 +26,7 @@ describe("MockDEVToken", function () {
       const { mockDEVToken } = await loadFixture(deployMockDEVTokenFixture);
       await expect(
         mockDEVToken.write.burn([0n])
-      ).to.be.rejectedWith("ERC20: burn amount must be greater than zero");
+      ).to.be.rejectedWith("MockDEVToken: burn amount must be greater than zero");
     });
 
     it("Should not allow burning more tokens than balance", async function () {
@@ -106,7 +106,7 @@ describe("MockDEVToken", function () {
             account: otherAccount.account,
           }
         )
-      ).to.be.rejectedWith("ERC20: caller is not authorized to mint");
+      ).to.be.rejectedWith("MockDEVToken: caller not authorized to mint");
     });
 
     it("Should not allow minting to the zero address", async function () {
@@ -117,7 +117,7 @@ describe("MockDEVToken", function () {
           "0x0000000000000000000000000000000000000000",
           mintAmount,
         ])
-      ).to.be.rejectedWith("ERC20: mint to the zero address");
+      ).to.be.rejectedWith("MockDEVToken: cannot mint to the zero address");
     });
   });
 
