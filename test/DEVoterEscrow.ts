@@ -78,6 +78,14 @@ describe("DEVoterEscrow", function () {
       expect(await dEVoterEscrow.read.votingPeriod()).to.equal(
         BigInt(votingPeriod)
       );
+
+      // Test legacy wrapper functions (using existing public getters)
+      expect(await dEVoterEscrow.read.feeWallet()).to.equal(
+        getAddress(feeWallet.account.address)
+      );
+      expect(await dEVoterEscrow.read.token()).to.equal( // Changed to .token()
+        getAddress(mockDEVToken.address)
+      );
     });
 
     it("Should enforce maximum fee limit", async function () {

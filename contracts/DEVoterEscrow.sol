@@ -733,6 +733,10 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     }
 
     // Legacy getter functions for backward compatibility
+
+    /**
+     * @dev Returns the address of the fee wallet.
+     */
     function getFeeWallet() external view returns (address) {
         return feeWallet;
     }
@@ -740,6 +744,9 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     // Removed legacy getFeePercentage getter for clarity. Use getFeeInfo for raw basis points.
     // Rationale: getFeeInfo provides all fee details in basis points, which is the standard for smart contracts.
 
+    /**
+     * @dev Returns the address of the token being escrowed.
+     */
     function getTokenAddress() external view returns (address) {
         return address(token);
     }
