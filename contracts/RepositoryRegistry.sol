@@ -31,7 +31,7 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
 
     // Events
     event RepositorySubmitted(uint256 indexed id, address indexed maintainer, uint256 feePaid);
-    event RepositoryUpdated(uint256 indexed id, address indexed maintainer);
+    event RepositoryUpdated(uint256 indexed id, address indexed maintainer, uint256 newDescriptionLength);
     event RepositoryDeactivated(uint256 indexed id);
     event SubmissionFeeUpdated(uint256 oldFee, uint256 newFee);
     event FeeWalletUpdated(address oldWallet, address newWallet);
@@ -58,8 +58,9 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
     require(repo.isActive, "Inactive");
         
     require(bytes(newDescription).length > 0, "Description cannot be empty");
+    require(bytes(newDescription).length <= 1000, "Description too long");
     repo.description = newDescription;
-    emit RepositoryUpdated(id, msg.sender);
+    emit RepositoryUpdated(id, msg.sender, bytes(newDescription).length);
     }
 
     /**

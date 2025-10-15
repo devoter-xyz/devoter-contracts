@@ -64,7 +64,7 @@ describe("Integration Tests", function () {
       mockDEVToken.write.mintTo([thirdAccountAddress, mintAmount], {
         account: otherAccount.account,
       })
-    ).to.be.rejectedWith("ERC20: caller is not authorized to mint");
+    ).to.be.rejectedWith("MockDEVToken: caller not authorized to mint");
   });
 
   it("Users can delegate voting power", async function () {
