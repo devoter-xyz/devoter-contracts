@@ -25,7 +25,6 @@ describe("RepositoryRegistry", function () {
         maintainer2 = maintainer2WalletClient;
         maintainer3 = maintainer3WalletClient;
         feeWalletClient = tempFeeWalletClient;
-        maintainer3 = maintainer3WalletClient;
 
 
         // Deploy MockDEVToken using viem
@@ -102,12 +101,15 @@ describe("RepositoryRegistry", function () {
         it("Should fail when allowance is insufficient", async function () {
             await mockDEVToken.write.approve([repositoryRegistry.address, parseEther("5")], { account: maintainer3.account }); // Only 5 tokens approved
 
-            await expect(
-                repositoryRegistry.write.submitRepository(
+            try {
+                await repositoryRegistry.write.submitRepository(
                     ["RepoInsufficient", "Desc", "https://github.com/insufficient", ["tag"]],
                     { account: maintainer3.account }
-                )
-            ).to.be.rejectedWith("ERC20: insufficient allowance");
+                );
+                expect.fail('expected submitRepository to revert');
+            } catch (err: any) {
+                expect(err.details).to.include('ERC20: insufficient allowance');
+            }
         });
 
         it("Should reject empty name", async function () {
