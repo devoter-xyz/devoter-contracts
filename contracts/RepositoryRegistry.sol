@@ -210,13 +210,16 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
      * @return Array of repository IDs that contain the specified tag
      */
     function searchByTag(string calldata tag) external view returns (uint256[] memory) {
-        // First pass: count repositories with the tag
+        bytes32 tagHash = keccak256(abi.encodePacked(tag));
+        uint256[] memory tempMatchingIds = new uint256[](repoCounter); // Max possible matches
         uint256 matchCount = 0;
+
         for (uint256 i = 1; i <= repoCounter; i++) {
-            if (repositories[i].maintainer != address(0) && repositories[i].isActive) {
-                string[] memory tags = repositories[i].tags;
-                for (uint256 j = 0; j < tags.length; j++) {
-                    if (keccak256(abi.encodePacked(tags[j])) == keccak256(abi.encodePacked(tag))) {
+            Repository storage repo = repositories[i];
+            if (repo.maintainer != address(0) && repo.isActive) {
+                for (uint256 j = 0; j < repo.tags.length; j++) {
+                    if (keccak256(abi.encodePacked(repo.tags[j])) == tagHash) {
+                        tempMatchingIds[matchCount] = i;
                         matchCount++;
                         break; // Found the tag, no need to check other tags for this repo
                     }
@@ -224,22 +227,10 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
             }
         }
 
-        // Create array with exact size needed
+        // Resize the array to the actual number of matches
         uint256[] memory matchingIds = new uint256[](matchCount);
-        
-        // Second pass: populate the array
-        uint256 index = 0;
-        for (uint256 i = 1; i <= repoCounter; i++) {
-            if (repositories[i].maintainer != address(0) && repositories[i].isActive) {
-                string[] memory tags = repositories[i].tags;
-                for (uint256 j = 0; j < tags.length; j++) {
-                    if (keccak256(abi.encodePacked(tags[j])) == keccak256(abi.encodePacked(tag))) {
-                        matchingIds[index] = i;
-                        index++;
-                        break; // Found the tag, no need to check other tags for this repo
-                    }
-                }
-            }
+        for (uint256 i = 0; i < matchCount; i++) {
+            matchingIds[i] = tempMatchingIds[i];
         }
 
         return matchingIds;
