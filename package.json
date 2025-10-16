@@ -14,19 +14,11 @@
     "check-connection": "hardhat run scripts/checkConnection.ts --network base-sepolia"
   },
   "devDependencies": {
-    
-    
-    
-    
-    
-    
-    
-    
+    "@nomicfoundation/hardhat-toolbox-viem": "^4.0.0",
     "@types/chai": "^4.3.20",
     "@types/mocha": "^10.0.10",
     "@types/node": "^24.0.3",
     "chai": "^4.5.0",
-    "@nomicfoundation/hardhat-toolbox-viem": "^4.0.0",
     "dotenv": "^16.5.0",
     "hardhat-gas-reporter": "^2.3.0",
     "solidity-coverage": "^0.8.16",
@@ -37,6 +29,7 @@
     "@openzeppelin/contracts": "^5.4.0",
     "@thirdweb-dev/contracts": "^3.15.0",
     "@thirdweb-dev/sdk": "^4.0.99",
+    "ethers": "^6.15.0",
     "hardhat": "^2.26.0"
   },
   "packageManager": "pnpm@10.12.1+sha512.f0dda8580f0ee9481c5c79a1d927b9164f2c478e90992ad268bbb2465a736984391d6333d2c327913578b2804af33474ca554ba29c04a8b13060a717675ae3ac"
