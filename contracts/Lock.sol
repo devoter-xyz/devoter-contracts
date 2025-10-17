@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 
 /**
  * @title Lock
@@ -26,7 +26,7 @@ contract Lock {
      * @param amount The amount withdrawn (entire contract balance).
      * @param when The timestamp when the withdrawal occurred.
      */
-    event Withdrawal(uint amount, uint when);
+    event Withdrawal(uint amount, uint indexed when);
 
     /**
      * @dev Initializes the contract with a future unlock time. Sets the deployer as the owner.
@@ -47,6 +47,8 @@ contract Lock {
 
     /**
      * @dev Allows the owner to withdraw all funds after the unlock time.
+     * Access Control: Only the owner can call this function.
+     * Reentrancy: This function transfers the entire balance, which is safe from reentrancy as there are no subsequent calls to external contracts.
      * Requirements:
      * - Current time must be greater than or equal to unlockTime.
      * - Caller must be the owner.
