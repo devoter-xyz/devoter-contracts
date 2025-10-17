@@ -2,21 +2,28 @@ import hre from "hardhat";
 import { getAddress } from "viem";
 
 async function main() {
-  const [owner] = await hre.viem.getWalletClients();
-  const ownerAddress = getAddress(owner.account.address);
+  try {
+    const [owner] = await hre.viem.getWalletClients();
 
-  const mockDEVToken = await hre.viem.deployContract("MockDEVToken", [
-    ownerAddress,
-    "Mock DEV Token",
-    "mDEV",
-  ]);
+    if (!owner) {
+      throw new Error("No owner wallet client found. Ensure your Hardhat configuration is correct and a wallet is available.");
+    }
 
-  console.log(`MockDEVToken deployed to: ${mockDEVToken.address}`);
-}
+    const ownerAddress = getAddress(owner.account.address);
+    console.log(`Deploying MockDEVToken with owner: ${ownerAddress}`);
 
-main()
-  .then(() => process.exit(0))
-  .catch((error) => {
+    const mockDEVToken = await hre.viem.deployContract("MockDEVToken", [
+      ownerAddress,
+      "Mock DEV Token",
+      "mDEV",
+    ]);
+
+    console.log(`MockDEVToken deployed to: ${mockDEVToken.address}`);
+  } catch (error) {
+    console.error("Failed to deploy MockDEVToken:");
     console.error(error);
     process.exit(1);
-  });
+  }
+}
+
+main();
