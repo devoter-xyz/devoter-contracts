@@ -1233,16 +1233,12 @@ describe("DEVoterVoting", function () {
       [owner.account.address],
     );
 
-    // Deploy DEVoterVoting with explicit ABI and bytecode
-    const devoterVoting = await hre.viem.deployContract({
-      abi: DEVoterVotingABI,
-      bytecode: DEVoterVotingBytecode,
-      args: [
-        devoterEscrow.address,
-        repositoryRegistry.address,
-        owner.account.address,
-      ],
-    });
+    // Deploy DEVoterVoting
+    const devoterVoting = await hre.viem.deployContract("DEVoterVoting", [
+      devoterEscrow.address,
+      repositoryRegistry.address,
+      owner.account.address,
+    ]);
 
     // Grant VOTING_CONTRACT_ROLE to DEVoterVoting in DEVoterEscrow
     await devoterEscrow.write.setVotingContractAddress([devoterVoting.address]);
