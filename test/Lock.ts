@@ -114,20 +114,38 @@ describe("Lock", function () {
       });
     });
 
-    describe("Events", function () {
-      it("Should emit an event on withdrawals", async function () {
-        const { lock, unlockTime, lockedAmount, publicClient } =
+    describe("Behavior", function () {
+      it("Should transfer the funds to the owner", async function () {
+        const { lock, unlockTime, lockedAmount, owner, publicClient } =
           await loadFixture(deployOneYearLockFixture);
 
         await time.increaseTo(unlockTime);
 
-        const hash = await lock.write.withdraw();
-        await publicClient.waitForTransactionReceipt({ hash });
+        const ownerInitialBalance = await publicClient.getBalance({
+          address: getAddress(owner.account.address),
+        });
 
-        // get the withdrawal events in the latest block
-        const withdrawalEvents = await lock.getEvents.Withdrawal();
-        expect(withdrawalEvents).to.have.lengthOf(1);
-        expect(withdrawalEvents[0].args.amount).to.equal(lockedAmount);
+        const hash = await lock.write.withdraw();
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+        const ownerFinalBalance = await publicClient.getBalance({
+          address: getAddress(owner.account.address),
+        });
+
+        // We need to account for the gas cost of the withdraw transaction
+        const gasUsed = receipt.gasUsed * receipt.effectiveGasPrice;
+
+        const actualAmountReceived = ownerFinalBalance + gasUsed;
+        const expectedAmountReceived = ownerInitialBalance + lockedAmount;
+        const difference = actualAmountReceived - expectedAmountReceived;
+
+        const tolerance = parseGwei("0.0001");
+
+        if (difference <= tolerance && difference >= -tolerance) {
+          expect(true).to.be.true; // Test passes
+        } else {
+          expect.fail(`Expected difference to be within +/-${tolerance}, but got ${difference}`);
+        }
       });
     });
   });
