@@ -8,33 +8,101 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
+/**
+ * @title DEVoterEscrow
+ * @dev This contract manages the escrow of DEV tokens for voting purposes within the DEVoter ecosystem.
+ * Users can deposit tokens, which are then locked for a specified voting period.
+ * During this period, the escrowed tokens can be used to cast votes on various proposals or repositories.
+ * After the voting period concludes, users can release their tokens.
+ * The contract includes features for fee collection, emergency controls, and administrative functions
+ * to manage parameters like fee percentages and voting periods.
+ *
+ * Inherits:
+ * - `ReentrancyGuard`: Prevents reentrant calls to critical functions.
+ * - `Ownable`: Provides a basic access control mechanism where a single address (the owner) has exclusive access to certain functions.
+ * - `Pausable`: Allows the contract to be paused and unpaused, typically for emergency situations.
+ * - `AccessControl`: A more granular role-based access control system.
+ */
 contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     using SafeERC20 for IERC20;
 
     // Access Control Roles
+    /**
+     * @dev Role for administrators who can manage contract parameters like fees and voting periods.
+     */
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
+    /**
+     * @dev Role for emergency operators who can pause the contract or perform emergency withdrawals.
+     */
     bytes32 public constant EMERGENCY_ROLE = keccak256("EMERGENCY_ROLE");
+    /**
+     * @dev Role specifically granted to the DEVoterVoting contract to interact with escrowed tokens.
+     */
     bytes32 public constant VOTING_CONTRACT_ROLE = keccak256("VOTING_CONTRACT_ROLE");
 
     // Constants for fee calculation
+    /**
+     * @dev Denominator for basis point calculations. 10000 basis points = 100%.
+     */
     uint256 public constant BASIS_POINTS_DENOMINATOR = 10000; // 100% = 10000 basis points
+    /**
+     * @dev Maximum allowed fee in basis points (e.g., 500 basis points = 5%).
+     */
     uint256 public constant MAX_FEE_BASIS_POINTS = 500; // 5% maximum fee (500 basis points)
+    /**
+     * @dev Minimum allowed fee in basis points (e.g., 0 basis points = 0%).
+     */
     uint256 public constant MIN_FEE_BASIS_POINTS = 0; // 0% minimum fee
 
+    /**
+     * @dev The ERC20 token contract being escrowed.
+     */
     IERC20 public immutable token;
+    /**
+     * @dev Address where collected fees are sent.
+     */
     address public feeWallet;
+    /**
+     * @dev Current fee percentage applied to deposits, in basis points (e.g., 100 = 1%).
+     */
     uint256 public feeBasisPoints; // Fee in basis points (1 basis point = 0.01%)
+    /**
+     * @dev The duration in seconds for which tokens are locked and available for voting.
+     */
     uint256 public votingPeriod;
 
-    // Fee exemption mapping
+    /**
+     * @dev Mapping to track which users are exempt from paying fees.
+     */
     mapping(address => bool) public feeExemptions;
 
     // Contract state tracking
+    /**
+     * @dev Total amount of tokens currently held in active escrows.
+     */
     uint256 public totalEscrowedAmount;
+    /**
+     * @dev Total amount of fees collected since contract deployment.
+     */
     uint256 public totalFeesCollected;
+    /**
+     * @dev Number of currently active escrows.
+     */
     uint256 public totalActiveEscrows;
+    /**
+     * @dev Mapping to quickly check if a user has an active escrow.
+     */
     mapping(address => bool) public hasActiveEscrow;
 
+    /**
+     * @dev Structure to hold detailed information about a user's escrow.
+     * @param isActive True if the escrow is currently active.
+     * @param amount The amount of tokens currently escrowed by the user.
+     * @param depositTimestamp The timestamp when the tokens were deposited.
+     * @param releaseTimestamp The timestamp when the escrowed tokens become releasable.
+     * @param feePaid The fee amount paid for this specific escrow.
+     * @param votesCast The total number of votes cast by the user using this escrow.
+     */
     struct EscrowData {
         bool isActive;
         uint256 amount;
@@ -44,10 +112,21 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
         uint256 votesCast; // Track total votes cast by the user
     }
 
+    /**
+     * @dev Mapping from user address to their `EscrowData`.
+     */
     mapping(address => EscrowData) public escrows;
 
 
     // Comprehensive Events System
+    /**
+     * @dev Emitted when tokens are successfully escrowed.
+     * @param user The address of the user who escrowed tokens.
+     * @param escrowId A unique identifier for the escrow (derived from user address).
+     * @param amount The amount of tokens escrowed.
+     * @param releaseTime The timestamp when the escrowed tokens can be released.
+     * @param votingPeriod The duration for which the tokens are locked for voting.
+     */
     event TokensEscrowed(
         address indexed user, 
         uint256 indexed escrowId,
@@ -57,12 +136,31 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     );
 
     // Mappings for vote tracking
+    /**
+     * @dev Tracks the total votes cast by a user per repository.
+     * Mapping: user address -> repository ID -> vote amount.
+     */
     mapping(address => mapping(uint256 => uint256)) public userVotesPerRepo;
+    /**
+     * @dev Tracks the total votes cast across all users for a specific repository.
+     * Mapping: repository ID -> total vote amount.
+     */
     mapping(uint256 => uint256) public totalVotesPerRepo;
 
+    /**
+     * @dev The address of the DEVoterVoting contract, which interacts with this escrow for voting.
+     */
     address public devoterVotingContractAddress; // New state variable
 
 
+    /**
+     * @dev Emitted when tokens are deposited into escrow.
+     * @param user The address of the user making the deposit.
+     * @param amount The total amount of tokens deposited (before fee deduction).
+     * @param feePaid The amount of fee paid for this deposit.
+     * @param amountEscrowed The net amount of tokens escrowed after fee deduction.
+     * @param releaseTimestamp The timestamp when the escrowed tokens become releasable.
+     */
     event TokensDeposited(
         address indexed user, 
         uint256 amount, 
@@ -70,6 +168,13 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
         uint256 amountEscrowed, 
         uint256 releaseTimestamp
     );
+    /**
+     * @dev Emitted when escrowed tokens are released to the user.
+     * @param user The address of the user whose tokens are released.
+     * @param amount The amount of tokens released.
+     * @param releaseTime The timestamp of the release.
+     * @param wasForced True if the release was initiated by an admin (forced release).
+     */
     event TokensReleased(
         address indexed user, 
         uint256 amount,
@@ -78,31 +183,106 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     );
     // Removed unused VoteCast event. Only VoteCasted is used for voting actions.
     // Rationale: Only one event is needed for vote actions to avoid confusion and redundancy.
+    /**
+     * @dev Emitted when fee parameters are updated.
+     * @param newFeePercentage The new fee in basis points.
+     * @param newFeeCollector The new address of the fee wallet.
+     * @param updatedBy The address of the account that updated the parameters.
+     */
     event FeeParametersUpdated(
         uint256 newFeePercentage, 
         address indexed newFeeCollector,
         address indexed updatedBy
     );
+    /**
+     * @dev Emitted during an emergency withdrawal of user funds.
+     * @param admin The address of the emergency role account performing the withdrawal.
+     * @param user The address of the user whose tokens were withdrawn.
+     * @param amount The amount of tokens withdrawn.
+     * @param reason The reason provided for the emergency withdrawal.
+     */
     event EmergencyWithdrawal(
         address indexed admin, 
         address indexed user, 
         uint256 amount,
         string reason
     );
+    /**
+     * @dev Emitted when the fee basis points are updated.
+     * @param oldFeeBasisPoints The previous fee in basis points.
+     * @param newFeeBasisPoints The new fee in basis points.
+     */
     event FeeBasisPointsUpdated(uint256 oldFeeBasisPoints, uint256 newFeeBasisPoints);
+    /**
+     * @dev Emitted when the fee wallet address is updated.
+     * @param oldFeeWallet The previous fee wallet address.
+     * @param newFeeWallet The new fee wallet address.
+     */
     event FeeWalletUpdated(address indexed oldFeeWallet, address indexed newFeeWallet);
+    /**
+     * @dev Emitted when a user's fee exemption status is updated.
+     * @param user The address of the user whose exemption status changed.
+     * @param isExempt True if the user is now exempt, false otherwise.
+     */
     event FeeExemptionUpdated(address indexed user, bool isExempt);
+    /**
+     * @dev Emitted when fees are collected from a deposit.
+     * @param user The address of the user from whom the fee was collected.
+     * @param feeAmount The amount of fee collected.
+     */
     event FeeCollected(address indexed user, uint256 feeAmount);
+    /**
+     * @dev Emitted when tokens are forcibly released by an administrator.
+     * @param user The address of the user whose tokens were force-released.
+     * @param amount The amount of tokens force-released.
+     * @param releasedBy The address of the administrator who initiated the force release.
+     */
     event TokensForceReleased(address indexed user, uint256 amount, address indexed releasedBy);
 
+    /**
+     * @dev Emitted when the contract is paused.
+     * @param admin The address of the account that paused the contract.
+     * @param timestamp The timestamp when the contract was paused.
+     */
     event ContractPaused(address indexed admin, uint256 timestamp);
+    /**
+     * @dev Emitted when the contract is unpaused.
+     * @param admin The address of the account that unpaused the contract.
+     * @param timestamp The timestamp when the contract was unpaused.
+     */
     event ContractUnpaused(address indexed admin, uint256 timestamp);
+    /**
+     * @dev Emitted when a user's escrow state changes (e.g., activated, deactivated).
+     * @param user The address of the user whose escrow state changed.
+     * @param isActive True if the escrow is now active, false otherwise.
+     * @param amount The current amount in the escrow.
+     */
     event EscrowStateChanged(address indexed user, bool isActive, uint256 amount);
+    /**
+     * @dev Emitted when the voting period is updated.
+     * @param oldPeriod The previous voting period in seconds.
+     * @param newPeriod The new voting period in seconds.
+     * @param updatedBy The address of the account that updated the voting period.
+     */
     event VotingPeriodUpdated(uint256 oldPeriod, uint256 newPeriod, address indexed updatedBy);
 
+    /**
+     * @dev Emitted when a user successfully casts a vote.
+     * @param user The address of the user who cast the vote.
+     * @param repositoryId The ID of the repository on which the vote was cast.
+     * @param amount The amount of vote tokens cast.
+     */
     event VoteCasted(address indexed user, uint256 indexed repositoryId, uint256 amount);
 
 
+    /**
+     * @dev Initializes the DEVoterEscrow contract.
+     * @param _tokenAddress The address of the ERC20 token to be used for escrow.
+     * @param _feeWallet The address where collected fees will be sent.
+     * @param _feeBasisPoints The initial fee percentage in basis points (e.g., 100 for 1%).
+     * @param _votingPeriod The duration in seconds for which tokens are locked for voting.
+     * @param initialOwner The address of the initial owner of the contract.
+     */
     constructor(
         address _tokenAddress,
         address _feeWallet,
@@ -128,23 +308,33 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     }
 
     // Access Control Modifiers
+    /**
+     * @dev Throws if called by any account other than an admin or the contract owner.
+     */
     modifier onlyAdmin() {
         require(hasRole(ADMIN_ROLE, msg.sender) || owner() == msg.sender, "Caller is not an admin");
         _;
     }
 
+    /**
+     * @dev Throws if called by any account other than an emergency role or the contract owner.
+     */
     modifier onlyEmergency() {
         require(hasRole(EMERGENCY_ROLE, msg.sender) || owner() == msg.sender, "Caller does not have emergency role");
         _;
     }
 
+    /**
+     * @dev Throws if called by any account other than the designated DEVoterVoting contract.
+     */
     modifier onlyVotingContract() {
         require(msg.sender == devoterVotingContractAddress, "Caller is not the DEVoterVoting contract");
         _;
     }
 
     /**
-     * @dev Sets the address of the DEVoterVoting contract and grants it the VOTING_CONTRACT_ROLE.
+     * @dev Sets the address of the DEVoterVoting contract and grants it the `VOTING_CONTRACT_ROLE`.
+     * This function can only be called by the contract owner.
      * @param _votingContractAddress The address of the DEVoterVoting contract.
      */
     function setVotingContractAddress(address _votingContractAddress) external onlyOwner {
@@ -160,85 +350,87 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     }
 
     /**
-     * @dev Calculate fee amount based on basis points
-     * @param amount The amount to calculate fee for
-     * @param user The user address (for exemption check)
-     * @return feeAmount The calculated fee amount
+     * @dev Calculates the fee amount based on the provided amount and user's fee exemption status.
+     * @param amount The total amount for which the fee is to be calculated.
+     * @param user The address of the user, used to check for fee exemptions.
+     * @return calculatedFee The computed fee amount.
      */
-    function calculateFee(uint256 amount, address user) public view returns (uint256 feeAmount) {
+    function calculateFee(uint256 amount, address user) public view returns (uint256 calculatedFee) {
         if (amount == 0) return 0;
         if (feeExemptions[user]) return 0;
         if (feeBasisPoints == 0) return 0;
 
         // Calculate fee using basis points for precision
-        feeAmount = (amount * feeBasisPoints) / BASIS_POINTS_DENOMINATOR;
+        calculatedFee = (amount * feeBasisPoints) / BASIS_POINTS_DENOMINATOR;
         
         // Ensure fee doesn't exceed the amount
-        if (feeAmount > amount) {
-            feeAmount = amount;
+        if (calculatedFee > amount) {
+            calculatedFee = amount;
         }
     }
 
     /**
-     * @dev Calculate the amount that will be escrowed after fee deduction
-     * @param amount The total amount to be deposited
-     * @param user The user address (for exemption check)
-     * @return escrowedAmount The amount that will be escrowed
-     * @return feeAmount The fee amount that will be charged
+     * @dev Calculates the net amount that will be escrowed after fee deduction.
+     * @param amount The total amount of tokens intended for deposit.
+     * @param user The address of the user, used to check for fee exemptions.
+     * @return netEscrowAmount The amount of tokens that will be placed into escrow.
+     * @return calculatedFee The amount of fee that will be charged.
      */
     function calculateEscrowAmount(uint256 amount, address user) 
         public 
         view 
-        returns (uint256 escrowedAmount, uint256 feeAmount) 
+        returns (uint256 netEscrowAmount, uint256 calculatedFee) 
     {
-        feeAmount = calculateFee(amount, user);
-        escrowedAmount = amount - feeAmount;
+        calculatedFee = calculateFee(amount, user);
+        netEscrowAmount = amount - calculatedFee;
     }
 
     /**
-     * @dev Preview fee calculation for a user
-     * @param amount The amount to calculate fee for
-     * @param user The user address
-     * @return feeAmount The calculated fee amount
-     * @return escrowedAmount The amount that would be escrowed
-     * @return isExempt Whether the user is fee exempt
+     * @dev Provides a preview of the fee calculation for a given amount and user.
+     * @param amount The amount of tokens for which to preview the fee.
+     * @param user The address of the user for whom to check fee exemption.
+     * @return calculatedFee The fee amount that would be charged.
+     * @return netEscrowAmount The net amount that would be escrowed after fee deduction.
+     * @return isExempt Whether the user is currently exempt from fees.
      */
     function previewFee(uint256 amount, address user) 
         external 
         view 
         returns (
-            uint256 feeAmount, 
-            uint256 escrowedAmount, 
+            uint256 calculatedFee, 
+            uint256 netEscrowAmount, 
             bool isExempt
         ) 
     {
         isExempt = feeExemptions[user];
-        feeAmount = calculateFee(amount, user);
-        escrowedAmount = amount - feeAmount;
+        calculatedFee = calculateFee(amount, user);
+        netEscrowAmount = amount - calculatedFee;
     }
 
     /**
-     * @dev Deposit tokens with fee calculation
-     * @param _amount The amount of tokens to deposit
+     * @dev Allows a user to deposit tokens into escrow. A fee may be deducted based on `feeBasisPoints`.
+     * The deposited tokens are locked for the `votingPeriod` and can be used for voting.
+     * Reverts if the deposit amount is zero or if the user already has an active escrow.
+     * @param _amount The total amount of tokens the user wishes to deposit.
      */
     function deposit(uint256 _amount) external nonReentrant whenNotPaused {
         require(_amount > 0, "Deposit amount must be greater than 0");
         require(!escrows[msg.sender].isActive, "User already has an active escrow");
 
-        uint256 feeAmount = calculateFee(_amount, msg.sender);
-        uint256 escrowedAmount = _amount - feeAmount;
+        uint256 calculatedFee = calculateFee(_amount, msg.sender);
+        uint256 netEscrowAmount = _amount - calculatedFee;
 
         token.safeTransferFrom(msg.sender, address(this), _amount);
 
         // Transfer fee if applicable
-        if (feeAmount > 0) {
-            token.safeTransfer(feeWallet, feeAmount);
-            emit FeeCollected(msg.sender, feeAmount);
+        if (calculatedFee > 0) {
+            token.safeTransfer(feeWallet, calculatedFee);
+            emit FeeCollected(msg.sender, calculatedFee);
         }
 
         // Update contract state
-        totalEscrowedAmount += escrowedAmount;
-        totalFeesCollected += feeAmount;
+        totalEscrowedAmount += netEscrowAmount;
+        totalFeesCollected += calculatedFee;
         totalActiveEscrows++;
         hasActiveEscrow[msg.sender] = true;
 
@@ -246,97 +438,103 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
 
         escrows[msg.sender] = EscrowData({
             isActive: true,
-            amount: escrowedAmount,
+            amount: netEscrowAmount,
             depositTimestamp: block.timestamp,
             releaseTimestamp: releaseTimestamp,
-            feePaid: feeAmount,
+            feePaid: calculatedFee,
             votesCast: 0
         });
 
         emit TokensDeposited(
             msg.sender, 
             _amount, 
-            feeAmount, 
-            escrowedAmount, 
+            calculatedFee, 
+            netEscrowAmount, 
             releaseTimestamp
         );
 
         emit TokensEscrowed(
             msg.sender,
             uint256(uint160(msg.sender)), // Using address as escrow ID
-            escrowedAmount,
+            netEscrowAmount,
             releaseTimestamp,
             votingPeriod
         );
 
-        emit EscrowStateChanged(msg.sender, true, escrowedAmount);
+        emit EscrowStateChanged(msg.sender, true, netEscrowAmount);
     }
 
 
     /**
-     * @dev Release escrowed tokens (merged logic from release and releaseTokens)
+     * @dev Allows a user to release their escrowed tokens after the voting period has ended.
+     * Reverts if there is no active escrow or if the voting period is not yet over.
      */
     function releaseTokens() external nonReentrant whenNotPausedOrEmergency {
         EscrowData storage escrow = escrows[msg.sender];
         require(escrow.isActive, "No active escrow for this user");
         require(block.timestamp >= escrow.releaseTimestamp, "Voting period is not over yet");
 
-        uint256 amount = escrow.amount;
+        uint256 escrowedAmount = escrow.amount;
 
         // Update contract state
-        totalEscrowedAmount -= amount;
+        totalEscrowedAmount -= escrowedAmount;
         totalActiveEscrows--;
         hasActiveEscrow[msg.sender] = false;
 
         escrow.isActive = false;
         escrow.amount = 0;
 
-        token.safeTransfer(msg.sender, amount);
+        token.safeTransfer(msg.sender, escrowedAmount);
 
-        emit TokensReleased(msg.sender, amount, block.timestamp, false);
+        emit TokensReleased(msg.sender, escrowedAmount, block.timestamp, false);
         emit EscrowStateChanged(msg.sender, false, 0);
     }
 
     /**
-     * @dev Allows the owner to forcibly release tokens for a user.
+     * @dev Allows the contract owner to forcibly release tokens for a specific user.
+     * This can be used in exceptional circumstances to bypass the voting period.
+     * Reverts if the user does not have an active escrow.
      * @param user The address of the user whose tokens are to be released.
      */
     function forceReleaseTokens(address user) external onlyOwner nonReentrant {
         EscrowData storage escrow = escrows[user];
         require(escrow.isActive, "No active escrow for this user");
 
-        uint256 amount = escrow.amount;
+        uint256 escrowedAmount = escrow.amount;
         
         // Update contract state
-        totalEscrowedAmount -= amount;
+        totalEscrowedAmount -= escrowedAmount;
         totalActiveEscrows--;
         hasActiveEscrow[user] = false;
         
         escrow.isActive = false;
         escrow.amount = 0;
 
-        token.safeTransfer(user, amount);
+        token.safeTransfer(user, escrowedAmount);
 
-        emit TokensForceReleased(user, amount, msg.sender);
-        emit TokensReleased(user, amount, block.timestamp, true);
+        emit TokensForceReleased(user, escrowedAmount, msg.sender);
+        emit TokensReleased(user, escrowedAmount, block.timestamp, true);
         emit EscrowStateChanged(user, false, 0);
     }
 
     /**
-     * @dev Allows the DEVoterVoting contract to return a specific amount of vote tokens to a user.
-     * @param user The user whose tokens are to be returned.
-     * @param amount The amount of tokens to return.
+     * @dev Allows the designated DEVoterVoting contract to return a specific amount of vote tokens to a user.
+     * This function is typically called when a user's vote is no longer active or has been withdrawn from a proposal.
+     * Reverts if the user has no active escrow, the amount is zero, or the amount exceeds the escrowed balance.
+     * @param user The address of the user whose tokens are to be returned.
+     * @param tokensToReturn The amount of tokens to return to the user.
+     * @return True if the tokens were successfully returned.
      */
-    function returnVoteTokens(address user, uint256 amount) external onlyVotingContract nonReentrant returns (bool) {
+    function returnVoteTokens(address user, uint256 tokensToReturn) external onlyVotingContract nonReentrant returns (bool) {
         EscrowData storage escrow = escrows[user];
         require(escrow.isActive, "No active escrow for this user");
-        require(amount > 0, "Amount must be greater than 0");
-        require(escrow.amount >= amount, "Insufficient escrow balance for withdrawal");
+        require(tokensToReturn > 0, "Amount must be greater than 0");
+        require(escrow.amount >= tokensToReturn, "Insufficient escrow balance for withdrawal");
 
         // Update escrowed amount
         // Adjust votesCast to maintain invariant votesCast <= amount
-        escrow.votesCast = escrow.votesCast > amount ? escrow.votesCast - amount : 0;
-        escrow.amount -= amount;
+        escrow.votesCast = escrow.votesCast > tokensToReturn ? escrow.votesCast - tokensToReturn : 0;
+        escrow.amount -= tokensToReturn;
 
         // If escrowed amount becomes 0, deactivate escrow
         if (escrow.amount == 0) {
@@ -345,10 +543,10 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
             hasActiveEscrow[user] = false;
         }
 
-        totalEscrowedAmount -= amount;
-        token.safeTransfer(user, amount);
+        totalEscrowedAmount -= tokensToReturn;
+        token.safeTransfer(user, tokensToReturn);
 
-        emit TokensReleased(user, amount, block.timestamp, true); // Consider if a new event is needed
+        emit TokensReleased(user, tokensToReturn, block.timestamp, true); // Consider if a new event is needed
         emit EscrowStateChanged(user, escrow.isActive, escrow.amount);
         return true;
     }
@@ -356,7 +554,8 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     // Emergency Functions
     
     /**
-     * @dev Emergency pause functionality - can be called by emergency role
+     * @dev Pauses the contract, preventing most state-changing operations.
+     * Only callable by an account with the `EMERGENCY_ROLE`.
      */
     function pauseContract() external onlyEmergency {
         _pause();
@@ -364,7 +563,8 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     }
 
     /**
-     * @dev Emergency unpause functionality - can be called by emergency role
+     * @dev Unpauses the contract, allowing normal operations to resume.
+     * Only callable by an account with the `EMERGENCY_ROLE`.
      */
     function unpauseContract() external onlyEmergency {
         _unpause();
@@ -372,49 +572,54 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     }
 
     /**
-     * @dev Emergency withdrawal for admin - allows emergency withdrawal of user funds
-     * @param user The user whose tokens should be emergency withdrawn
-     * @param reason The reason for emergency withdrawal
+     * @dev Allows an emergency role to withdraw a user's entire escrowed amount.
+     * This function is intended for critical situations to protect user funds.
+     * Reverts if the user has no active escrow or if no reason is provided.
+     * @param user The address of the user whose tokens should be emergency withdrawn.
+     * @param reason A mandatory string explaining the reason for the emergency withdrawal.
      */
     function emergencyWithdraw(address user, string calldata reason) external onlyEmergency {
         EscrowData storage escrow = escrows[user];
         require(escrow.isActive, "No active escrow for this user");
         require(bytes(reason).length > 0, "Emergency reason required");
 
-        uint256 amount = escrow.amount;
+        uint256 escrowedAmount = escrow.amount;
         
         // Update contract state
-        totalEscrowedAmount -= amount;
+        totalEscrowedAmount -= escrowedAmount;
         totalActiveEscrows--;
         hasActiveEscrow[user] = false;
         
         escrow.isActive = false;
         escrow.amount = 0;
 
-        token.safeTransfer(user, amount);
+        token.safeTransfer(user, escrowedAmount);
         
-        emit EmergencyWithdrawal(msg.sender, user, amount, reason);
-        emit TokensReleased(user, amount, block.timestamp, true);
+        emit EmergencyWithdrawal(msg.sender, user, escrowedAmount, reason);
+        emit TokensReleased(user, escrowedAmount, block.timestamp, true);
         emit EscrowStateChanged(user, false, 0);
     }
 
     /**
-     * @dev Emergency function to withdraw contract's token balance to owner
-     * Only callable when paused and by emergency role
+     * @dev Allows an emergency role to recover any tokens accidentally sent directly to the contract address.
+     * This function is only callable when the contract is paused.
+     * Reverts if there are no tokens to recover.
      */
     function emergencyTokenRecovery() external onlyEmergency whenPaused {
-        uint256 balance = token.balanceOf(address(this));
-        require(balance > 0, "No tokens to recover");
+        uint256 contractBalance = token.balanceOf(address(this));
+        require(contractBalance > 0, "No tokens to recover");
         
-        token.safeTransfer(owner(), balance);
-        emit EmergencyWithdrawal(msg.sender, owner(), balance, "Contract token recovery");
+        token.safeTransfer(owner(), contractBalance);
+        emit EmergencyWithdrawal(msg.sender, owner(), contractBalance, "Contract token recovery");
     }
 
     // Enhanced Admin functions for fee management
 
     /**
-     * @dev Update fee basis points (admin only)
-     * @param newFeeBasisPoints New fee in basis points
+     * @dev Updates the fee basis points for new deposits.
+     * Only callable by an account with the `ADMIN_ROLE`.
+     * Reverts if the new fee basis points exceed the maximum or are below the minimum allowed.
+     * @param newFeeBasisPoints The new fee percentage in basis points (e.g., 100 for 1%).
      */
     function updateFeeBasisPoints(uint256 newFeeBasisPoints) external onlyAdmin {
         require(newFeeBasisPoints <= MAX_FEE_BASIS_POINTS, "Fee exceeds maximum allowed");
@@ -425,15 +630,17 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
         
         emit FeeBasisPointsUpdated(oldFeeBasisPoints, newFeeBasisPoints);
         emit FeeParametersUpdated(
-            newFeeBasisPoints, // Now emits raw basis points for clarity instead of percentage
+            newFeeBasisPoints, 
             feeWallet, 
             msg.sender
         );
     }
 
     /**
-     * @dev Update fee wallet address (admin only)
-     * @param newFeeWallet New fee wallet address
+     * @dev Updates the address of the fee wallet where collected fees are sent.
+     * Only callable by an account with the `ADMIN_ROLE`.
+     * Reverts if the new fee wallet address is zero.
+     * @param newFeeWallet The new address for the fee wallet.
      */
     function updateFeeWallet(address newFeeWallet) external onlyAdmin {
         require(newFeeWallet != address(0), "Fee wallet cannot be zero");
@@ -443,15 +650,17 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
         
         emit FeeWalletUpdated(oldFeeWallet, newFeeWallet);
         emit FeeParametersUpdated(
-            feeBasisPoints, // Now emits raw basis points for clarity instead of percentage
+            feeBasisPoints, 
             newFeeWallet, 
             msg.sender
         );
     }
 
     /**
-     * @dev Update voting period (admin only)
-     * @param newVotingPeriod New voting period in seconds
+     * @dev Updates the duration of the voting period for new escrows.
+     * Only callable by an account with the `ADMIN_ROLE`.
+     * Reverts if the new voting period is zero.
+     * @param newVotingPeriod The new voting period duration in seconds.
      */
     function updateVotingPeriod(uint256 newVotingPeriod) external onlyAdmin {
         require(newVotingPeriod > 0, "Voting period must be greater than 0");
@@ -463,9 +672,11 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     }
 
     /**
-     * @dev Set fee exemption for a user (admin only)
-     * @param user The user address
-     * @param isExempt Whether the user should be exempt from fees
+     * @dev Sets or unsets fee exemption for a specific user.
+     * Only callable by an account with the `ADMIN_ROLE`.
+     * Reverts if the user address is zero.
+     * @param user The address of the user to modify fee exemption status.
+     * @param isExempt A boolean indicating whether the user should be exempt (true) or not (false).
      */
     function setFeeExemption(address user, bool isExempt) external onlyAdmin {
         require(user != address(0), "User address cannot be zero");
@@ -475,9 +686,11 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     }
 
     /**
-     * @dev Batch set fee exemptions for multiple users (admin only)
-     * @param users Array of user addresses
-     * @param exemptions Array of exemption statuses
+     * @dev Allows an administrator to set fee exemptions for multiple users in a single transaction.
+     * Only callable by an account with the `ADMIN_ROLE`.
+     * Reverts if the lengths of the `users` and `exemptions` arrays do not match, or if any user address is zero.
+     * @param users An array of user addresses to modify.
+     * @param exemptions An array of boolean values, where each value corresponds to the exemption status for the user at the same index.
      */
     function batchSetFeeExemptions(address[] calldata users, bool[] calldata exemptions) 
         external 
@@ -495,32 +708,36 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     // Role Management Functions
 
     /**
-     * @dev Grant admin role to an address (only owner)
-     * @param account The address to grant admin role to
+     * @dev Grants the `ADMIN_ROLE` to a specified account.
+     * Only callable by the contract owner.
+     * @param account The address to which the `ADMIN_ROLE` will be granted.
      */
     function grantAdminRole(address account) external onlyOwner {
         grantRole(ADMIN_ROLE, account);
     }
 
     /**
-     * @dev Revoke admin role from an address (only owner)
-     * @param account The address to revoke admin role from
+     * @dev Revokes the `ADMIN_ROLE` from a specified account.
+     * Only callable by the contract owner.
+     * @param account The address from which the `ADMIN_ROLE` will be revoked.
      */
     function revokeAdminRole(address account) external onlyOwner {
         revokeRole(ADMIN_ROLE, account);
     }
 
     /**
-     * @dev Grant emergency role to an address (only owner)
-     * @param account The address to grant emergency role to
+     * @dev Grants the `EMERGENCY_ROLE` to a specified account.
+     * Only callable by the contract owner.
+     * @param account The address to which the `EMERGENCY_ROLE` will be granted.
      */
     function grantEmergencyRole(address account) external onlyOwner {
         grantRole(EMERGENCY_ROLE, account);
     }
 
     /**
-     * @dev Revoke emergency role from an address (only owner)
-     * @param account The address to revoke emergency role from
+     * @dev Revokes the `EMERGENCY_ROLE` from a specified account.
+     * Only callable by the contract owner.
+     * @param account The address from which the `EMERGENCY_ROLE` will be revoked.
      */
     function revokeEmergencyRole(address account) external onlyOwner {
         revokeRole(EMERGENCY_ROLE, account);
@@ -529,22 +746,22 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     // Enhanced View functions for contract transparency
 
     /**
-     * @dev Get comprehensive contract state information
-     * @return totalEscrowed Total amount currently escrowed
-     * @return totalFees Total fees collected since deployment
-     * @return activeEscrows Number of currently active escrows
-     * @return contractBalance Current token balance of the contract
-     * @return isPaused Whether the contract is currently paused
+     * @dev Retrieves comprehensive state information about the contract.
+     * @return totalEscrowedAmount_ Total amount of tokens currently held in active escrows.
+     * @return totalFeesCollected_ Total amount of fees collected since contract deployment.
+     * @return totalActiveEscrows_ Number of currently active escrows.
+     * @return contractTokenBalance Current token balance of the contract address.
+     * @return isContractPaused Whether the contract is currently paused.
      */
     function getContractState() 
         external 
         view 
         returns (
-            uint256 totalEscrowed,
-            uint256 totalFees,
-            uint256 activeEscrows,
-            uint256 contractBalance,
-            bool isPaused
+            uint256 totalEscrowedAmount_,
+            uint256 totalFeesCollected_,
+            uint256 totalActiveEscrows_,
+            uint256 contractTokenBalance,
+            bool isContractPaused
         ) 
     {
         return (
@@ -557,43 +774,43 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     }
 
     /**
-     * @dev Get current fee information
-     * @return currentFeeBasisPoints Current fee in basis points
-     * @return maxFeeBasisPoints Maximum allowed fee in basis points
-     * @return feeWalletAddress Current fee wallet address
+     * @dev Retrieves current fee-related information.
+     * @return currentFeeBasisPoints_ Current fee percentage in basis points.
+     * @return maxFeeBasisPoints_ Maximum allowed fee percentage in basis points.
+     * @return feeWalletAddress_ Current address designated to receive fees.
      */
     function getFeeInfo() 
         external 
         view 
         returns (
-            uint256 currentFeeBasisPoints, 
-            uint256 maxFeeBasisPoints, 
-            address feeWalletAddress
+            uint256 currentFeeBasisPoints_, 
+            uint256 maxFeeBasisPoints_, 
+            address feeWalletAddress_
         ) 
     {
         return (feeBasisPoints, MAX_FEE_BASIS_POINTS, feeWallet);
     }
 
     /**
-     * @dev Get detailed escrow information for a user
-     * @param user The user address to query
-     * @return isActive Whether the user has an active escrow
-     * @return amount Amount currently escrowed
-     * @return depositTime When the escrow was created
-     * @return releaseTime When the escrow can be released
-     * @return feePaid Fee paid for this escrow
-     * @return timeRemaining Time remaining until release (0 if can be released)
+     * @dev Retrieves detailed escrow information for a specific user.
+     * @param user The address of the user to query.
+     * @return isActive_ True if the user has an active escrow.
+     * @return amount_ The amount of tokens currently escrowed by the user.
+     * @return depositTime_ The timestamp when the user's tokens were deposited.
+     * @return releaseTime_ The timestamp when the user's escrowed tokens become releasable.
+     * @return feePaid_ The fee amount paid for this specific escrow.
+     * @return timeRemaining_ The time remaining in seconds until the escrow can be released (0 if already releasable).
      */
     function getDetailedEscrowInfo(address user) 
         external 
         view 
         returns (
-            bool isActive,
-            uint256 amount,
-            uint256 depositTime,
-            uint256 releaseTime,
-            uint256 feePaid,
-            uint256 timeRemaining
+            bool isActive_,
+            uint256 amount_,
+            uint256 depositTime_,
+            uint256 releaseTime_,
+            uint256 feePaid_,
+            uint256 timeRemaining_
         ) 
     {
         EscrowData memory escrow = escrows[user];
@@ -608,37 +825,37 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     }
 
     /**
-     * @dev Check if a user is fee exempt
-     * @param user The user address to check
-     * @return True if user is exempt from fees
+     * @dev Checks if a specific user is exempt from paying deposit fees.
+     * @param user The address of the user to check.
+     * @return True if the user is fee exempt, false otherwise.
      */
     function isFeeExempt(address user) external view returns (bool) {
         return feeExemptions[user];
     }
 
     /**
-     * @dev Get fee paid for a specific escrow
-     * @param user The user address
-     * @return The fee amount paid for the escrow
+     * @dev Retrieves the fee amount paid for a specific user's active escrow.
+     * @param user The address of the user.
+     * @return The fee amount paid for the user's escrow.
      */
     function getEscrowFeePaid(address user) external view returns (uint256) {
         return escrows[user].feePaid;
     }
 
     /**
-     * @dev Get role information for an address
-     * @param account The address to check
-     * @return hasAdminRole Whether the address has admin role
-     * @return hasEmergencyRole Whether the address has emergency role
-     * @return isOwner Whether the address is the contract owner
+     * @dev Retrieves the role information for a given account.
+     * @param account The address to check for roles.
+     * @return hasAdminRole_ True if the account has the `ADMIN_ROLE`.
+     * @return hasEmergencyRole_ True if the account has the `EMERGENCY_ROLE`.
+     * @return isOwner_ True if the account is the contract owner.
      */
     function getRoleInfo(address account) 
         external 
         view 
         returns (
-            bool hasAdminRole,
-            bool hasEmergencyRole,
-            bool isOwner
+            bool hasAdminRole_,
+            bool hasEmergencyRole_,
+            bool isOwner_
         ) 
     {
         return (
@@ -649,35 +866,37 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     }
 
     /**
-     * @dev Get voting period and timing information
-     * @return currentVotingPeriod Current voting period in seconds
-     * @return currentTimestamp Current block timestamp
+     * @dev Retrieves the current voting period and the current block timestamp.
+     * @return currentVotingPeriod_ The current voting period duration in seconds.
+     * @return currentTimestamp_ The current block timestamp.
      */
     function getTimingInfo() 
         external 
         view 
         returns (
-            uint256 currentVotingPeriod,
-            uint256 currentTimestamp
+            uint256 currentVotingPeriod_,
+            uint256 currentTimestamp_
         ) 
     {
         return (votingPeriod, block.timestamp);
     }
 
     /**
-     * @dev Simulate a vote cast (for front-end preview)
-     * @param user The user who would cast the vote
-     * @return canVote Whether the user can vote
-     * @return votingPower The voting power available
-     * @return timeRemaining Time remaining in voting period
+     * @dev Simulates a vote cast for a user to preview their voting capabilities.
+     * This function does not alter contract state.
+     * @param user The address of the user who would cast the vote.
+     * @param repositoryId The ID of the repository (unused in simulation, but kept for interface consistency).
+     * @return canUserVote True if the user can currently cast a vote.
+     * @return availableVotingPower The amount of voting power the user currently has.
+     * @return remainingVotingTime Time remaining in seconds until the voting period ends for the user's escrow.
      */
     function simulateVoteCast(address user, uint256 /* repositoryId */) 
         external 
         view 
         returns (
-            bool canVote,
-            uint256 votingPower,
-            uint256 timeRemaining
+            bool canUserVote,
+            uint256 availableVotingPower,
+            uint256 remainingVotingTime
         ) 
     {
         EscrowData memory escrow = escrows[user];
@@ -693,18 +912,29 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     // Enhanced View functions for contract transparency
 
     /**
-     * @dev Get comprehensive contract state information
+     * @dev Calculates the release timestamp for an escrow based on the deposit time and voting period.
+     * @param depositTime The timestamp when the tokens were deposited.
+     * @return The calculated timestamp when the escrowed tokens become releasable.
      */
-
     function calculateReleaseTimestamp(uint256 depositTime) internal view returns (uint256) {
         return depositTime + votingPeriod;
     }
 
+    /**
+     * @dev Checks if a user's voting period is currently active.
+     * @param user The address of the user to check.
+     * @return True if the user has an active escrow and the current block timestamp is before the release timestamp.
+     */
     function isVotingPeriodActive(address user) public view returns (bool) {
         EscrowData memory escrow = escrows[user];
         return escrow.isActive && block.timestamp < escrow.releaseTimestamp;
     }
 
+    /**
+     * @dev Retrieves the remaining time in seconds until a user's escrow can be released.
+     * @param user The address of the user to check.
+     * @return The remaining time in seconds, or 0 if the escrow is not active or the voting period has ended.
+     */
     function getRemainingVotingTime(address user) public view returns (uint256) {
         EscrowData memory escrow = escrows[user];
         if (!escrow.isActive || block.timestamp >= escrow.releaseTimestamp) {
@@ -713,29 +943,49 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
         return escrow.releaseTimestamp - block.timestamp;
     }
 
+    /**
+     * @dev Checks if a user's escrowed tokens are currently releasable.
+     * @param user The address of the user to check.
+     * @return True if the user has an active escrow and the current block timestamp is on or after the release timestamp.
+     */
     function canReleaseTokens(address user) public view returns (bool) {
         EscrowData memory escrow = escrows[user];
         return escrow.isActive && block.timestamp >= escrow.releaseTimestamp;
     }
 
+    /**
+     * @dev Retrieves the full `EscrowData` struct for a specific user.
+     * Only callable by an account with the `ADMIN_ROLE`.
+     * @param user The address of the user to query.
+     * @return The `EscrowData` struct containing all details of the user's escrow.
+     */
     function getEscrowDetails(address user) external view onlyAdmin returns (EscrowData memory) {
         return escrows[user];
     }
 
-    function updateReleaseTimestamp(address user, uint256 newReleaseTimestamp) external onlyAdmin {
+    /**
+     * @dev Allows an administrator to update the release timestamp for a user's active escrow.
+     * This can be used to extend or shorten the voting period in exceptional circumstances.
+     * Only callable by an account with the `ADMIN_ROLE`.
+     * Reverts if the user has no active escrow or if the new release timestamp is not in the future.
+     * @param user The address of the user whose escrow release timestamp is to be updated.
+     * @param newReleaseTimestamp The new timestamp in seconds when the escrowed tokens will become releasable.
+     */
+    function updateReleaseTimestamp(address user, uint252 newReleaseTimestamp) external onlyAdmin {
         require(escrows[user].isActive, "No active escrow for this user");
         require(newReleaseTimestamp > block.timestamp, "Release timestamp must be in the future");
         
-        uint256 oldTimestamp = escrows[user].releaseTimestamp;
+        uint256 previousReleaseTimestamp = escrows[user].releaseTimestamp;
         escrows[user].releaseTimestamp = newReleaseTimestamp;
         
-        emit VotingPeriodUpdated(oldTimestamp, newReleaseTimestamp, msg.sender);
+        emit VotingPeriodUpdated(previousReleaseTimestamp, newReleaseTimestamp, msg.sender);
     }
 
     // Legacy getter functions for backward compatibility
 
     /**
      * @dev Returns the address of the fee wallet.
+     * @return The address of the fee wallet.
      */
     function getFeeWallet() external view returns (address) {
         return feeWallet;
@@ -745,39 +995,43 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     // Rationale: getFeeInfo provides all fee details in basis points, which is the standard for smart contracts.
 
     /**
-     * @dev Returns the address of the token being escrowed.
+     * @dev Returns the address of the ERC20 token being escrowed.
+     * @return The address of the token contract.
      */
     function getTokenAddress() external view returns (address) {
         return address(token);
     }
 
     /**
-     * @dev Allows a user to cast a vote on a repository.
-     * @param repositoryId The ID of the repository to vote on.
-     * @param amount The amount of votes to cast.
+     * @dev Allows a user to cast a vote on a specific repository using their escrowed tokens.
+     * Reverts if the user has no active escrow, the voting period has expired, the vote amount is zero,
+     * or if the user has insufficient remaining vote balance.
+     * @param repositoryId The unique identifier of the repository to vote on.
+     * @param voteAmount The amount of escrowed tokens to cast as a vote.
      */
-    function castVote(uint256 repositoryId, uint256 amount) external nonReentrant {
+    function castVote(uint256 repositoryId, uint256 voteAmount) external nonReentrant {
         EscrowData storage escrow = escrows[msg.sender];
 
         // Validate voting conditions
         require(escrow.isActive, "No active escrow");
         require(isVotingPeriodActive(msg.sender), "Voting period expired");
-        require(amount > 0, "Vote amount must be greater than 0");
-        require(escrow.votesCast + amount <= escrow.amount, "Insufficient vote balance");
+        require(voteAmount > 0, "Vote amount must be greater than 0");
+        require(escrow.votesCast + voteAmount <= escrow.amount, "Insufficient vote balance");
 
         // Update vote tracking
-        escrow.votesCast += amount;
-        userVotesPerRepo[msg.sender][repositoryId] += amount;
-        totalVotesPerRepo[repositoryId] += amount;
+        escrow.votesCast += voteAmount;
+        userVotesPerRepo[msg.sender][repositoryId] += voteAmount;
+        totalVotesPerRepo[repositoryId] += voteAmount;
 
         // Emit voting event
-        emit VoteCasted(msg.sender, repositoryId, amount);
+        emit VoteCasted(msg.sender, repositoryId, voteAmount);
     }
 
     /**
-     * @dev Gets the remaining vote balance for a user.
-     * @param user The address of the user.
-     * @return The remaining vote balance.
+     * @dev Retrieves the remaining vote balance for a specific user.
+     * This is the amount of escrowed tokens a user can still use to cast votes.
+     * @param user The address of the user to query.
+     * @return The remaining vote balance for the user.
      */
     function getRemainingVoteBalance(address user) external view returns (uint256) {
         EscrowData memory escrow = escrows[user];
