@@ -11,10 +11,10 @@ contract DEVoterTreasury {
     mapping(address => bool) public authorized;
 
     event Deposit(address indexed from, uint256 amount);
-    event Withdrawal(address indexed to, uint256 amount);
-    event OwnerTransferInitiated(address indexed previousOwner, address indexed newOwner);
-    event OwnerTransferred(address indexed previousOwner, address indexed newOwner);
-    event Authorized(address indexed account, bool status);
+    event FundsWithdrawn(address indexed to, uint256 amount);
+    event OwnershipTransferInitiated(address indexed previousOwner, address indexed newOwner);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event AuthorizationStatusChanged(address indexed account, bool status);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Not owner");
@@ -40,28 +40,33 @@ contract DEVoterTreasury {
     }
 
     function withdraw(address payable to, uint256 amount) external onlyAuthorized {
-        require(address(this).balance >= amount, "Insufficient balance");
+        require(to != address(0), "DEVoterTreasury: withdraw to the zero address");
+        require(amount > 0, "DEVoterTreasury: withdraw zero amount");
+        require(address(this).balance >= amount, "DEVoterTreasury: Insufficient balance for withdrawal");
         to.transfer(amount);
-        emit Withdrawal(to, amount);
+        emit FundsWithdrawn(to, amount);
     }
 
     function setAuthorized(address account, bool status) external onlyOwner {
+        require(account != address(0), "DEVoterTreasury: authorize zero address");
         authorized[account] = status;
-        emit Authorized(account, status);
+        emit AuthorizationStatusChanged(account, status);
     }
 
     function initiateOwnerTransfer(address newOwner) external onlyOwner {
-        require(newOwner != address(0), "Zero address");
+        require(newOwner != address(0), "DEVoterTreasury: new owner is the zero address");
+        require(newOwner != owner, "DEVoterTreasury: new owner is current owner");
         pendingOwner = newOwner;
-        emit OwnerTransferInitiated(owner, newOwner);
+        emit OwnershipTransferInitiated(owner, newOwner);
     }
 
     function acceptOwnerTransfer() external {
-        require(msg.sender == pendingOwner, "Not pending owner");
+        require(pendingOwner != address(0), "DEVoterTreasury: no pending owner");
+        require(msg.sender == pendingOwner, "DEVoterTreasury: not pending owner");
         address previousOwner = owner;
         owner = pendingOwner;
         pendingOwner = address(0);
-        emit OwnerTransferred(previousOwner, owner);
+        emit OwnershipTransferred(previousOwner, owner);
     }
 
     function getBalance() external view returns (uint256) {
