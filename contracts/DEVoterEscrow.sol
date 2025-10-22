@@ -267,6 +267,20 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     event VotingPeriodUpdated(uint256 oldPeriod, uint256 newPeriod, address indexed updatedBy);
 
     /**
+     * @dev Emitted when a user's escrow release timestamp is updated by an admin.
+     * @param user The address of the user whose release timestamp was updated.
+     * @param oldReleaseTimestamp The previous release timestamp.
+     * @param newReleaseTimestamp The new release timestamp.
+     * @param updatedBy The address of the account that updated the release timestamp.
+     */
+    event ReleaseTimestampUpdated(
+        address indexed user,
+        uint256 oldReleaseTimestamp,
+        uint256 newReleaseTimestamp,
+        address indexed updatedBy
+    );
+
+    /**
      * @dev Emitted when a user successfully casts a vote.
      * @param user The address of the user who cast the vote.
      * @param repositoryId The ID of the repository on which the vote was cast.
@@ -601,16 +615,27 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
     }
 
     /**
-     * @dev Allows an emergency role to recover any tokens accidentally sent directly to the contract address.
-     * This function is only callable when the contract is paused.
-     * Reverts if there are no tokens to recover.
+     * @dev Allows an emergency role to recover tokens accidentally sent to the contract.
+     * This function distinguishes between the primary escrow token and other (foreign) tokens.
+     * For the primary escrow token, it only allows recovery of surplus tokens beyond the total escrowed amount.
+     * For foreign tokens, it allows recovery of the entire balance of that token.
+     * Only callable when the contract is paused.
+     * @param recoverToken The address of the IERC20 token to recover.
      */
-    function emergencyTokenRecovery() external onlyEmergency whenPaused {
-        uint256 contractBalance = token.balanceOf(address(this));
-        require(contractBalance > 0, "No tokens to recover");
-        
-        token.safeTransfer(owner(), contractBalance);
-        emit EmergencyWithdrawal(msg.sender, owner(), contractBalance, "Contract token recovery");
+    function emergencyTokenRecovery(IERC20 recoverToken) external onlyEmergency whenPaused {
+        require(address(recoverToken) != address(0), "Zero token");
+        if (address(recoverToken) == address(token)) {
+            uint256 bal = token.balanceOf(address(this));
+            require(bal > totalEscrowedAmount, "No surplus escrow token to recover");
+            uint256 surplus = bal - totalEscrowedAmount;
+            token.safeTransfer(owner(), surplus);
+            emit EmergencyWithdrawal(msg.sender, owner(), surplus, "Recover surplus escrow token");
+        } else {
+            uint256 bal = recoverToken.balanceOf(address(this));
+            require(bal > 0, "No tokens to recover");
+            SafeERC20.safeTransfer(recoverToken, owner(), bal);
+            emit EmergencyWithdrawal(msg.sender, owner(), bal, "Recover foreign token");
+        }
     }
 
     // Enhanced Admin functions for fee management
@@ -885,7 +910,6 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
      * @dev Simulates a vote cast for a user to preview their voting capabilities.
      * This function does not alter contract state.
      * @param user The address of the user who would cast the vote.
-     * @param repositoryId The ID of the repository (unused in simulation, but kept for interface consistency).
      * @return canUserVote True if the user can currently cast a vote.
      * @return availableVotingPower The amount of voting power the user currently has.
      * @return remainingVotingTime Time remaining in seconds until the voting period ends for the user's escrow.
@@ -971,14 +995,14 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
      * @param user The address of the user whose escrow release timestamp is to be updated.
      * @param newReleaseTimestamp The new timestamp in seconds when the escrowed tokens will become releasable.
      */
-    function updateReleaseTimestamp(address user, uint252 newReleaseTimestamp) external onlyAdmin {
+    function updateReleaseTimestamp(address user, uint256 newReleaseTimestamp) external onlyAdmin {
         require(escrows[user].isActive, "No active escrow for this user");
         require(newReleaseTimestamp > block.timestamp, "Release timestamp must be in the future");
         
         uint256 previousReleaseTimestamp = escrows[user].releaseTimestamp;
         escrows[user].releaseTimestamp = newReleaseTimestamp;
         
-        emit VotingPeriodUpdated(previousReleaseTimestamp, newReleaseTimestamp, msg.sender);
+        emit ReleaseTimestampUpdated(user, previousReleaseTimestamp, newReleaseTimestamp, msg.sender);
     }
 
     // Legacy getter functions for backward compatibility

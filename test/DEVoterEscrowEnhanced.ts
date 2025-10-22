@@ -237,37 +237,148 @@ describe("DEVoterEscrow Enhanced Features", function () {
       ).to.be.rejectedWith("EnforcedPause");
     });
 
-    it("Should allow emergency withdrawal", async function () {
-      const { dEVoterEscrow, owner, user, emergencyUser } = await loadFixture(
-        deployContractsFixture
-      );
+    it("Should revert emergencyTokenRecovery if no surplus escrow token", async function () {
+      const { dEVoterEscrow, mockDEVToken, owner, user, votingPeriod } =
+        await loadFixture(deployContractsFixture);
 
-      // First deposit some tokens
-      await dEVoterEscrow.write.deposit([parseEther("100")], {
+      // Deposit tokens to create an escrow
+      const depositAmount = parseEther("100");
+      await dEVoterEscrow.write.deposit([depositAmount], {
         account: user.account,
       });
 
-      // Grant emergency role
-      await dEVoterEscrow.write.grantEmergencyRole(
-        [getAddress(emergencyUser.account.address)],
+      // Fast forward time to allow release, but don't release yet
+      await time.increase(votingPeriod + 1);
+
+      // Pause the contract
+      await dEVoterEscrow.write.pauseContract([], { account: owner.account });
+
+      // At this point, contractBalance should be equal to totalEscrowedAmount (after fee deduction)
+      // So, emergencyTokenRecovery should revert with "No surplus escrow token to recover"
+      await expect(
+        dEVoterEscrow.write.emergencyTokenRecovery([mockDEVToken.address], {
+          account: owner.account,
+        })
+      ).to.be.rejectedWith("No surplus escrow token to recover");
+    });
+
+    it("Should recover only surplus escrow tokens during emergencyTokenRecovery", async function () {
+      const { dEVoterEscrow, mockDEVToken, owner, user, votingPeriod } =
+        await loadFixture(deployContractsFixture);
+
+      // Deposit tokens to create an escrow
+      const depositAmount = parseEther("100");
+      await dEVoterEscrow.write.deposit([depositAmount], {
+        account: user.account,
+      });
+
+      // Send some extra tokens directly to the contract (surplus)
+      const surplusAmount = parseEther("50");
+      await mockDEVToken.write.transfer(
+        [dEVoterEscrow.address, surplusAmount],
+        { account: owner.account }
+      );
+
+      // Pause the contract
+      await dEVoterEscrow.write.pauseContract([], { account: owner.account });
+
+      const ownerInitialBalance = await mockDEVToken.read.balanceOf([
+        getAddress(owner.account.address),
+      ]);
+
+      await dEVoterEscrow.write.emergencyTokenRecovery(
+        [mockDEVToken.address],
         {
           account: owner.account,
         }
       );
 
-      // Emergency withdraw
-      await dEVoterEscrow.write.emergencyWithdraw(
-        [getAddress(user.account.address), "Emergency situation"],
+      const ownerFinalBalance = await mockDEVToken.read.balanceOf([
+        getAddress(owner.account.address),
+      ]);
+
+      expect(ownerFinalBalance).to.equal(ownerInitialBalance + surplusAmount);
+    });
+
+    it("Should recover foreign tokens during emergencyTokenRecovery", async function () {
+      const { dEVoterEscrow, owner } = await loadFixture(
+        deployContractsFixture
+      );
+
+      // Deploy a mock foreign token
+      const mockForeignToken = await hre.viem.deployContract("MockDEVToken", [
+        getAddress(owner.account.address),
+        "Mock Foreign Token",
+        "mFT",
+      ]);
+
+      // Send some foreign tokens directly to the escrow contract
+      const foreignTokenAmount = parseEther("75");
+      await mockForeignToken.write.transfer(
+        [dEVoterEscrow.address, foreignTokenAmount],
+        { account: owner.account }
+      );
+
+      // Pause the contract
+      await dEVoterEscrow.write.pauseContract([], { account: owner.account });
+
+      const ownerInitialBalance = await mockForeignToken.read.balanceOf([
+        getAddress(owner.account.address),
+      ]);
+
+      await dEVoterEscrow.write.emergencyTokenRecovery(
+        [mockForeignToken.address],
         {
-          account: emergencyUser.account,
+          account: owner.account,
         }
       );
 
-      const escrow = await dEVoterEscrow.read.escrows([
-        getAddress(user.account.address),
+      const ownerFinalBalance = await mockForeignToken.read.balanceOf([
+        getAddress(owner.account.address),
       ]);
-      expect(escrow[0]).to.be.false; // isActive should be false
+
+      expect(ownerFinalBalance).to.equal(ownerInitialBalance + foreignTokenAmount);
     });
+
+    it("Should revert emergencyTokenRecovery if recoverToken is zero address", async function () {
+      const { dEVoterEscrow, owner } = await loadFixture(
+        deployContractsFixture
+      );
+
+      // Pause the contract
+      await dEVoterEscrow.write.pauseContract([], { account: owner.account });
+
+      await expect(
+        dEVoterEscrow.write.emergencyTokenRecovery(
+          ["0x0000000000000000000000000000000000000000"],
+          { account: owner.account }
+        )
+      ).to.be.rejectedWith("Zero token");
+    });
+
+    it("Should revert emergencyTokenRecovery if no foreign tokens to recover", async function () {
+      const { dEVoterEscrow, owner } = await loadFixture(
+        deployContractsFixture
+      );
+
+      // Deploy a mock foreign token
+      const mockForeignToken = await hre.viem.deployContract("MockDEVToken", [
+        getAddress(owner.account.address),
+        "Mock Foreign Token",
+        "mFT",
+      ]);
+
+      // Pause the contract
+      await dEVoterEscrow.write.pauseContract([], { account: owner.account });
+
+      await expect(
+        dEVoterEscrow.write.emergencyTokenRecovery(
+          [mockForeignToken.address],
+          { account: owner.account }
+        )
+      ).to.be.rejectedWith("No tokens to recover");
+    });
+
 
     it("Should not allow non-emergency role to perform emergency functions", async function () {
       const { dEVoterEscrow, nonAdmin } = await loadFixture(
@@ -574,8 +685,98 @@ describe("DEVoterEscrow Enhanced Features", function () {
       ).to.be.rejectedWith("Voting period must be greater than 0");
     });
 
-    it("Should update release timestamp with validation", async function () {
+    it("Should update release timestamp with validation and emit event", async function () {
+      const { dEVoterEscrow, owner, user, publicClient } = await loadFixture(
+        deployContractsFixture
+      );
+
+      // First create an escrow
+      await dEVoterEscrow.write.deposit([parseEther("100")], {
+        account: user.account,
+      });
+
+      const userAddress = getAddress(user.account.address);
+      const initialEscrow = await dEVoterEscrow.read.escrows([userAddress]);
+      const previousReleaseTimestamp = initialEscrow[3];
+
+      const currentTime = BigInt(Math.floor(Date.now() / 1000));
+      const newReleaseTimestamp = currentTime + 86400n; // 1 day from now
+
+      const hash = await dEVoterEscrow.write.updateReleaseTimestamp(
+        [userAddress, newReleaseTimestamp],
+        {
+          account: owner.account,
+        }
+      );
+
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+      const escrow = await dEVoterEscrow.read.escrows([userAddress]);
+      expect(escrow[3]).to.equal(newReleaseTimestamp); // releaseTimestamp updated
+
+      // Decode the ReleaseTimestampUpdated event
+      const releaseTimestampUpdatedEvent = receipt.logs.find((log) => {
+        return log.topics[0] === keccak256(toHex("ReleaseTimestampUpdated(address,uint256,uint256,address)"));
+      });
+
+      expect(releaseTimestampUpdatedEvent).to.not.be.undefined;
+
+      const { decodeEventLog } = require("viem");
+
+      const decodedArgs = decodeEventLog({
+        abi: dEVoterEscrow.abi,
+        eventName: "ReleaseTimestampUpdated",
+        data: releaseTimestampUpdatedEvent.data,
+        topics: releaseTimestampUpdatedEvent.topics,
+      }).args;
+
+      expect(decodedArgs.user).to.equal(userAddress);
+      expect(decodedArgs.oldReleaseTimestamp).to.equal(
+        previousReleaseTimestamp
+      );
+      expect(decodedArgs.newReleaseTimestamp).to.equal(newReleaseTimestamp);
+      expect(decodedArgs.updatedBy).to.equal(getAddress(owner.account.address));
+    });
+
+    it("Should revert updateReleaseTimestamp if user has no active escrow", async function () {
+      const { dEVoterEscrow, owner, nonAdmin } = await loadFixture(
+        deployContractsFixture
+      );
+
+      const currentTime = BigInt(Math.floor(Date.now() / 1000));
+      const newReleaseTimestamp = currentTime + 86400n; // 1 day from now
+
+      await expect(
+        dEVoterEscrow.write.updateReleaseTimestamp(
+          [getAddress(nonAdmin.account.address), newReleaseTimestamp],
+          { account: owner.account }
+        )
+      ).to.be.rejectedWith("No active escrow for this user");
+    });
+
+    it("Should revert updateReleaseTimestamp if newReleaseTimestamp is not in the future", async function () {
       const { dEVoterEscrow, owner, user } = await loadFixture(
+        deployContractsFixture
+      );
+
+      // First create an escrow
+      await dEVoterEscrow.write.deposit([parseEther("100")], {
+        account: user.account,
+      });
+
+      const currentTime = BigInt(Math.floor(Date.now() / 1000));
+      const pastTime = currentTime - 100n; // In the past
+
+      await expect(
+        dEVoterEscrow.write.updateReleaseTimestamp(
+          [getAddress(user.account.address), pastTime],
+          { account: owner.account }
+        )
+      ).to.be.rejectedWith("Release timestamp must be in the future");
+    });
+
+    it("Should revert updateReleaseTimestamp if called by non-admin", async function () {
+      const { dEVoterEscrow, user, nonAdmin } = await loadFixture(
         deployContractsFixture
       );
 
@@ -587,18 +788,14 @@ describe("DEVoterEscrow Enhanced Features", function () {
       const currentTime = BigInt(Math.floor(Date.now() / 1000));
       const futureTime = currentTime + 86400n; // 1 day from now
 
-      await dEVoterEscrow.write.updateReleaseTimestamp(
-        [getAddress(user.account.address), futureTime],
-        {
-          account: owner.account,
-        }
-      );
-
-      const escrow = await dEVoterEscrow.read.escrows([
-        getAddress(user.account.address),
-      ]);
-      expect(escrow[3]).to.equal(futureTime); // releaseTimestamp
+      await expect(
+        dEVoterEscrow.write.updateReleaseTimestamp(
+          [getAddress(user.account.address), futureTime],
+          { account: nonAdmin.account }
+        )
+      ).to.be.rejected;
     });
+
   });
 
   describe("Contract State Tracking", function () {
