@@ -11,10 +11,10 @@ contract DEVoterTreasury {
     mapping(address => bool) public authorized;
 
     event Deposit(address indexed from, uint256 amount);
-    event FundsWithdrawn(address indexed to, uint256 amount);
-    event OwnershipTransferInitiated(address indexed previousOwner, address indexed newOwner);
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-    event AuthorizationStatusChanged(address indexed account, bool status);
+    event Withdrawal(address indexed to, uint256 amount);
+    event OwnerTransferInitiated(address indexed previousOwner, address indexed newOwner);
+    event OwnerTransferred(address indexed previousOwner, address indexed newOwner);
+    event Authorized(address indexed account, bool status);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Not owner");
@@ -44,20 +44,20 @@ contract DEVoterTreasury {
         require(amount > 0, "DEVoterTreasury: withdraw zero amount");
         require(address(this).balance >= amount, "DEVoterTreasury: Insufficient balance for withdrawal");
         to.transfer(amount);
-        emit FundsWithdrawn(to, amount);
+        emit Withdrawal(to, amount);
     }
 
     function setAuthorized(address account, bool status) external onlyOwner {
         require(account != address(0), "DEVoterTreasury: authorize zero address");
         authorized[account] = status;
-        emit AuthorizationStatusChanged(account, status);
+        emit Authorized(account, status);
     }
 
     function initiateOwnerTransfer(address newOwner) external onlyOwner {
         require(newOwner != address(0), "DEVoterTreasury: new owner is the zero address");
         require(newOwner != owner, "DEVoterTreasury: new owner is current owner");
         pendingOwner = newOwner;
-        emit OwnershipTransferInitiated(owner, newOwner);
+        emit OwnerTransferInitiated(owner, newOwner);
     }
 
     function acceptOwnerTransfer() external {
@@ -66,7 +66,7 @@ contract DEVoterTreasury {
         address previousOwner = owner;
         owner = pendingOwner;
         pendingOwner = address(0);
-        emit OwnershipTransferred(previousOwner, owner);
+        emit OwnerTransferred(previousOwner, owner);
     }
 
     function getBalance() external view returns (uint256) {

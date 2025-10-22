@@ -168,8 +168,7 @@ const DEVoterVotingABI = [
         "type": "address"
       }
     ],
-    "name": "OwnershipTransferred",
-    "type": "event"
+                "name": "OwnerTransferred",    "type": "event"
   },
   {
     "anonymous": false,
