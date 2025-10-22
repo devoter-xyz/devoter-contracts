@@ -151,6 +151,9 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
     function _isWithdrawalAllowed(address _user, uint256 _repositoryId) 
         internal view returns (bool, string memory)
     {
+        if (block.timestamp > votingEndTime) {
+            return (false, "DEVoterVoting: Voting period has ended.");
+        }
         if (!isVotingActive) {
             return (false, "DEVoterVoting: Voting period is not active.");
         }
@@ -161,7 +164,7 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
             return (false, "DEVoterVoting: No remaining votes to withdraw for this repository.");
         }
         // Withdrawal restriction period: cannot withdraw within 24 hours of voting end.
-        uint256 withdrawalDeadline = votingEndTime - WITHDRAWAL_RESTRICTION_PERIOD;
+        uint256 withdrawalDeadline = votingEndTime > WITHDRAWAL_RESTRICTION_PERIOD ? votingEndTime - WITHDRAWAL_RESTRICTION_PERIOD : 0;
         if (block.timestamp >= withdrawalDeadline) {
             return (false, "DEVoterVoting: Cannot withdraw within the restriction period (24 hours before voting ends).");
         }
@@ -462,6 +465,8 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         }));
         
         hasUserVoted[msg.sender][repositoryId] = true;
+        
+        uint256 previousVotesForRepo = userVotesByRepository[repositoryId][msg.sender];
         userVotesByRepository[repositoryId][msg.sender] = amount;
         
         // Initialize remaining votes for withdrawal tracking
@@ -469,8 +474,7 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         
         // Update repository totals
         // Increment voterCount only if this is the user's first vote for this repository
-        // This check relies on `userVotesByRepository` being 0 before the first vote.
-        if (userVotesByRepository[repositoryId][msg.sender] == 0) {
+        if (previousVotesForRepo == 0) {
             repositoryVotes[repositoryId].voterCount++;
         }
         repositoryVotes[repositoryId].totalVotes += amount;
@@ -555,6 +559,12 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         // Parameter validation
         require(repositoryId > 0, "DEVoterVoting: Repository ID must be greater than 0.");
         require(amount > 0, "DEVoterVoting: Withdrawal amount must be greater than 0.");
+
+        // Check for withdrawal deadline first
+        uint256 deadline = votingEndTime > WITHDRAWAL_RESTRICTION_PERIOD ? votingEndTime - WITHDRAWAL_RESTRICTION_PERIOD : 0;
+        if (block.timestamp >= deadline) {
+            revert WithdrawalDeadlinePassed(deadline, block.timestamp);
+        }
 
         // Comprehensive validation with custom errors using the helper function
         (bool allowed, string memory reason) = _isWithdrawalAllowed(msg.sender, repositoryId);
