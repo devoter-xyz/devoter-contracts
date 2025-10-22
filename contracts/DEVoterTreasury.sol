@@ -13,7 +13,7 @@ contract DEVoterTreasury {
     event Deposit(address indexed from, uint256 amount);
     event Withdrawal(address indexed to, uint256 amount);
     event OwnerTransferInitiated(address indexed previousOwner, address indexed newOwner);
-    event OwnerTransferred(address indexed previousOwner, address indexed newOwner);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event Authorized(address indexed account, bool status);
 
     modifier onlyOwner() {
@@ -66,7 +66,7 @@ contract DEVoterTreasury {
         address previousOwner = owner;
         owner = pendingOwner;
         pendingOwner = address(0);
-        emit OwnerTransferred(previousOwner, owner);
+        emit OwnershipTransferred(previousOwner, owner);
     }
 
     function getBalance() external view returns (uint256) {
