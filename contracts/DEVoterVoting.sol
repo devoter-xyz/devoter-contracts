@@ -136,8 +136,14 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
     /**
      * @dev Modifier to ensure function is called only during active voting period
      */
+    /// @dev Internal helper to check if the voting period is currently active.
+    /// @return True if voting is active and current time is within the voting period, false otherwise.
+    function _isVotingPeriodActive() internal view returns (bool) {
+        return isVotingActive && block.timestamp <= votingEndTime;
+    }
+
     modifier onlyDuringVoting() {
-        require(isVotingActive && block.timestamp <= votingEndTime, "Voting not active");
+        require(_isVotingPeriodActive(), "Voting not active");
         _;
     }
     
@@ -170,7 +176,7 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         public view returns (bool valid, string memory error) 
     {
         // Check if voting period is active
-        if (!isVotingActive || block.timestamp > votingEndTime) {
+        if (!_isVotingPeriodActive()) {
             return (false, "Voting period not active");
         }
         
@@ -312,8 +318,8 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
      * @notice Only the contract owner can start voting periods
      */
     function startVotingPeriod(uint256 duration) external onlyOwner {
-        require(!isVotingActive, "Voting already active");
-        require(duration > 0, "Invalid duration");
+        require(!isVotingActive, "VotingPeriod: A voting period is already active");
+        require(duration > 0, "VotingPeriod: Duration must be greater than zero");
         
         votingStartTime = block.timestamp;
         votingEndTime = block.timestamp + duration;
@@ -327,7 +333,7 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
      * @notice Only the contract owner can end voting periods
      */
     function endVotingPeriod() external onlyOwner {
-        require(isVotingActive, "No active voting period");
+        require(isVotingActive, "VotingPeriod: No active voting period to end");
         
         isVotingActive = false;
         emit VotingPeriodEnded(block.timestamp);
@@ -430,9 +436,12 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         nonReentrant 
         onlyDuringVoting 
     {
-        // Validate the vote
+        require(repositoryId > 0, "CastVote: Repository ID must be greater than zero");
+        require(amount > 0, "CastVote: Vote amount must be greater than zero");
+
+        // Validate the vote using the internal helper function
         (bool valid, string memory error) = validateVote(msg.sender, repositoryId, amount);
-        require(valid, error);
+        require(valid, string(abi.encodePacked("CastVote: Vote validation failed: ", error)));
         
         // Call escrow contract to execute the vote
         escrowContract.castVote(repositoryId, amount);
@@ -450,14 +459,11 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         // Initialize remaining votes for withdrawal tracking
         remainingVotes[msg.sender][repositoryId] = amount;
         
-        // Update repository totals
-        if (!hasUserVoted[msg.sender][repositoryId]) {
-            repositoryVotes[repositoryId].voterCount++;
-        }
+        // Increment voter count as this is a new vote for this repository (guaranteed by validateVote)
+        repositoryVotes[repositoryId].voterCount++;
         repositoryVotes[repositoryId].totalVotes += amount;
         
         emit VoteCast(msg.sender, repositoryId, amount, block.timestamp);
-
     }
     
     // ===== WITHDRAWAL AMOUNT VALIDATION FUNCTIONS =====
@@ -533,30 +539,37 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         nonReentrant 
         onlyDuringVoting 
     {
+        require(repositoryId > 0, "WithdrawVote: Repository ID must be greater than zero");
+        require(amount > 0, "WithdrawVote: Withdrawal amount must be greater than zero");
+
         // Comprehensive validation with custom errors
         if (!hasUserVoted[msg.sender][repositoryId]) {
-            revert WithdrawalNotAllowed("No vote found for this repository");
+            revert WithdrawalNotAllowed("WithdrawVote: No vote found for this repository by the user");
         }
         
         uint256 withdrawalDeadline = votingEndTime - WITHDRAWAL_RESTRICTION_PERIOD;
+        // Edge case: If votingEndTime is less than WITHDRAWAL_RESTRICTION_PERIOD, withdrawalDeadline could underflow.
+        // However, given typical voting durations, this is unlikely. A more robust check would be:
+        // require(votingEndTime > WITHDRAWAL_RESTRICTION_PERIOD, "Voting period too short for withdrawal restriction");
+        // For now, we assume votingEndTime is sufficiently large.
         if (block.timestamp >= withdrawalDeadline) {
             revert WithdrawalDeadlinePassed(withdrawalDeadline, block.timestamp);
         }
         
         uint256 available = getAvailableWithdrawalAmount(msg.sender, repositoryId);
-        if (amount == 0 || amount > available) {
+        if (amount > available) {
             revert InvalidWithdrawalAmount(amount, available);
         }
         
         // Handle potential escrow failures
         try escrowContract.returnVoteTokens(msg.sender, amount) returns (bool success) {
             if (!success) {
-                revert WithdrawalNotAllowed("Escrow contract rejected withdrawal");
+                revert WithdrawalNotAllowed("WithdrawVote: Escrow contract rejected withdrawal");
             }
         } catch Error(string memory reason) {
-            revert WithdrawalNotAllowed(string(abi.encodePacked("Escrow error: ", reason)));
+            revert WithdrawalNotAllowed(string(abi.encodePacked("WithdrawVote: Escrow error: ", reason)));
         } catch {
-            revert WithdrawalNotAllowed("Unknown escrow contract error");
+            revert WithdrawalNotAllowed("WithdrawVote: Unknown escrow contract error");
         }
         
         // Continue with withdrawal logic...
@@ -593,14 +606,13 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         function emergencyWithdrawalOverride(address user, uint256 repositoryId, uint256 amount)
             external onlyOwner
         {
-            require(hasUserVoted[user][repositoryId], "User has no vote to withdraw");
+            require(user != address(0), "EmergencyWithdrawal: User address cannot be zero");
+            require(repositoryId > 0, "EmergencyWithdrawal: Repository ID must be greater than zero");
+            require(amount > 0, "EmergencyWithdrawal: Withdrawal amount must be greater than zero");
+            require(hasUserVoted[user][repositoryId], "EmergencyWithdrawal: User has no vote to withdraw for this repository");
     
             uint256 available = getAvailableWithdrawalAmount(user, repositoryId);
             uint256 actualWithdrawalAmount;
-    
-            if (amount == 0) {
-                revert InvalidWithdrawalAmount(amount, available); // Cannot withdraw 0
-            }
     
             if (amount > available) {
                 actualWithdrawalAmount = available; // Cap at available
@@ -636,13 +648,7 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
                     remainingVotes[user][repositoryId]
                 );
             }
-        }    /**
-     * @dev Internal function to update repository vote totals and user vote tracking on withdrawal
-     * @param user Address of the user
-     * @param repositoryId ID of the repository
-     * @param amount Amount withdrawn
-    * @param fullWithdrawal Whether this is a full withdrawal
-     */
+        }
     function updateRepositoryTotals(address user, uint256 repositoryId, uint256 amount, bool fullWithdrawal) internal {
         RepositoryVoteData storage repoData = repositoryVotes[repositoryId];
         // Always decrease total votes
@@ -715,10 +721,14 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         view 
         returns (uint256 rank) 
     {
+        require(repositoryId > 0, "GetRepositoryRank: Repository ID must be greater than zero");
+        require(compareIds.length > 0, "GetRepositoryRank: Comparison list cannot be empty");
+
         uint256 targetVotes = repositoryVotes[repositoryId].totalVotes;
         rank = 1;
         
         for (uint256 i = 0; i < compareIds.length; i++) {
+            // Edge case: Ensure compareIds[i] is a valid repository ID if necessary, though current logic handles non-existent IDs by returning 0 votes.
             if (repositoryVotes[compareIds[i]].totalVotes > targetVotes) {
                 rank++;
             }
@@ -737,7 +747,8 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         view 
         returns (uint256[] memory topIds, uint256[] memory topVotes) 
     {
-        require(limit > 0, "Limit must be greater than 0");
+        require(limit > 0, "GetTopRepositories: Limit must be greater than zero");
+        require(repositoryIds.length > 0, "GetTopRepositories: Repository ID list cannot be empty");
         
         uint256 resultLength = limit > repositoryIds.length ? repositoryIds.length : limit;
         topIds = new uint256[](resultLength);
@@ -793,6 +804,8 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         view 
         returns (uint256[] memory totalVotes, uint256[] memory voterCounts) 
     {
+        require(repositoryIds.length > 0, "GetBatchVotingResults: Repository ID list cannot be empty");
+
         totalVotes = new uint256[](repositoryIds.length);
         voterCounts = new uint256[](repositoryIds.length);
         
@@ -816,6 +829,9 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         view
         returns (uint256 currentVoteAmount)
     {
+        require(user != address(0), "GetUserCurrentVoteAmount: User address cannot be zero");
+        require(repositoryId > 0, "GetUserCurrentVoteAmount: Repository ID must be greater than zero");
+
         uint256 originalVote = userVotesByRepository[repositoryId][user];
         uint256 withdrawn = totalWithdrawn[user][repositoryId];
         if (originalVote > withdrawn) {
@@ -849,6 +865,9 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         view 
         returns (uint256 totalAmount) 
     {
+        require(user != address(0), "GetTotalWithdrawnByUser: User address cannot be zero");
+        require(repositoryId > 0, "GetTotalWithdrawnByUser: Repository ID must be greater than zero");
+
         return totalWithdrawn[user][repositoryId];
     }
     
@@ -863,6 +882,9 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         view 
         returns (uint256 remaining) 
     {
+        require(user != address(0), "GetRemainingVotes: User address cannot be zero");
+        require(repositoryId > 0, "GetRemainingVotes: Repository ID must be greater than zero");
+
         return remainingVotes[user][repositoryId];
     }
 
@@ -872,14 +894,20 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
      * @param amount Amount to be withdrawn
      * @return projectedBalance Projected escrow balance after withdrawal
      */
-    function getEscrowBalanceAfterWithdrawal(address user, uint256 /*repositoryId*/, uint256 amount)
+    function getEscrowBalanceAfterWithdrawal(address user, uint256 repositoryId, uint256 amount)
         external 
         view 
         returns (uint256 projectedBalance)
     {
+        require(user != address(0), "GetEscrowBalanceAfterWithdrawal: User address cannot be zero");
+        require(repositoryId > 0, "GetEscrowBalanceAfterWithdrawal: Repository ID must be greater than zero");
+        require(amount > 0, "GetEscrowBalanceAfterWithdrawal: Amount must be greater than zero");
+
         (bool isActive, uint256 currentBalance,,,,) = escrowContract.escrows(user);
         if (!isActive) {
-            return amount; // If no active escrow, balance would just be the withdrawal amount
+            // If no active escrow, the projected balance would simply be the amount being withdrawn
+            // as it implies the user is receiving tokens back without an existing escrow to add to.
+            return amount; 
         }
         return currentBalance + amount;
     }
