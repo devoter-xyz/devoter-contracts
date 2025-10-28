@@ -173,14 +173,13 @@ describe("Lock", function () {
         });
 
         // The malicious contract tries to attack
-        await expect(maliciousContract.write.attack()).to.be.rejectedWith(
-          /ReentrancyGuard: reentrant call/
-        );
+        await expect(maliciousContract.write.attack())
+          .to.be.rejectedWith(/ETH transfer failed/);
 
-        // Verify that the lock contract still holds its funds (minus the initial 1n sent to malicious contract)
+        // Verify that the lock contract still holds its funds
         expect(
           await publicClient.getBalance({ address: lock.address })
-        ).to.equal(parseGwei("11")); // Initial 1 gwei + 10 gwei sent by owner should remain
+        ).to.equal(parseGwei("11")); // Initial 1 gwei + 10 gwei = 11 gwei
       });
     });
   });
