@@ -98,7 +98,7 @@ describe("Lock", function () {
           { client: { wallet: otherAccount } }
         );
         await expect(lockAsOtherAccount.write.withdraw()).to.be.rejectedWith(
-          "You aren't the owner"
+          "OwnableUnauthorizedAccount"
         );
       });
 
@@ -146,6 +146,39 @@ describe("Lock", function () {
         } else {
           expect.fail(`Expected difference to be within +/-${tolerance}, but got ${difference}`);
         }
+      });
+    });
+
+    describe("Reentrancy", function () {
+      it("Should prevent reentrant calls to withdraw", async function () {
+        const { lock, unlockTime, owner, publicClient } = await loadFixture(
+          deployOneYearLockFixture
+        );
+
+        await time.increaseTo(unlockTime);
+
+        // Deploy the malicious contract
+        const maliciousContract = await hre.viem.deployContract(
+          "MaliciousReentrant",
+          [lock.address],
+          { value: 1n } // Send some ETH to the malicious contract
+        );
+
+        // Fund the lock contract with more ETH for the attack
+        await owner.sendTransaction({
+          to: lock.address,
+          value: parseGwei("10"),
+        });
+
+        // The malicious contract tries to attack
+        await expect(maliciousContract.write.attack()).to.be.rejectedWith(
+          "ReentrancyGuard: reentrant call"
+        );
+
+        // Verify that the lock contract still holds its funds (minus the initial 1n sent to malicious contract)
+        expect(
+          await publicClient.getBalance({ address: lock.address })
+        ).to.equal(parseGwei("11")); // Initial 1 + 10 sent by owner
       });
     });
   });

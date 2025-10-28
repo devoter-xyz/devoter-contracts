@@ -7,10 +7,13 @@
  */
 pragma solidity ^0.8.28;
 
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
 // Uncomment this line to use console.log
 // import "hardhat/console.sol";
 
-contract Lock {
+contract Lock is ReentrancyGuard, Ownable {
     /**
      * @dev The timestamp when funds can be withdrawn.
      */
@@ -19,7 +22,7 @@ contract Lock {
     /**
      * @dev The address of the contract owner who can withdraw funds.
      */
-    address payable public owner;
+
 
     /**
      * @dev Emitted when a withdrawal is made.
@@ -35,14 +38,14 @@ contract Lock {
      * - _unlockTime must be in the future.
      * - Contract can receive ETH at deployment.
      */
-    constructor(uint _unlockTime) payable {
+    constructor(uint _unlockTime) payable Ownable(msg.sender) {
         require(
             block.timestamp < _unlockTime,
             "Unlock time should be in the future"
         );
 
         unlockTime = _unlockTime;
-        owner = payable(msg.sender);
+
     }
 
     /**
@@ -54,15 +57,15 @@ contract Lock {
      * - Caller must be the owner.
      * Emits a {Withdrawal} event.
      */
-    function withdraw() public {
+    function withdraw() public onlyOwner nonReentrant {
         // Uncomment this line, and the import of "hardhat/console.sol", to print a log in your terminal
         // console.log("Unlock time is %o and block timestamp is %o", unlockTime, block.timestamp);
 
         require(block.timestamp >= unlockTime, "You can't withdraw yet");
-        require(msg.sender == owner, "You aren't the owner");
+
 
         emit Withdrawal(address(this).balance, block.timestamp);
 
-        owner.transfer(address(this).balance);
+        payable(owner()).transfer(address(this).balance);
     }
 }
