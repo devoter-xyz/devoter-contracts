@@ -11,6 +11,7 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     
     struct Repository {
+        uint256 id;
         string name;
         string description;
         string githubUrl;
@@ -112,6 +113,7 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
 
         // Store repository in mapping
         repositories[repoCounter] = Repository({
+            id: repoCounter,
             name: name,
             description: description,
             githubUrl: url,
@@ -254,21 +256,23 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
     function getRepositoriesByIds(uint256[] calldata ids) external view returns (Repository[] memory) {
         Repository[] memory result = new Repository[](ids.length);
         for (uint256 i = 0; i < ids.length; i++) {
-            result[i] = repositories[ids[i]];
+            Repository memory repo = repositories[ids[i]];
+            repo.id = ids[i]; // Explicitly set the ID
+            result[i] = repo;
         }
         return result;
     }
 
     /**
-     * @dev Get the ID of a repository at a specific index.
-     *      This function allows iteration over all registered repositories (including inactive ones).
-     * @param index The 0-based index of the repository to retrieve.
-     * @return The ID of the repository at the given index. Returns 0 if the index is out of bounds.
+     * @dev This function allows iteration over active registered repositories only.
+     * @param index The index of the repository to retrieve.
+     * @return The ID of the repository at the given index.
      */
     function getRepositoryIdAtIndex(uint256 index) external view returns (uint256) {
         require(index < repoCounter, "Index out of bounds");
         uint256 repoId = index + 1;
-        require(repositories[repoId].maintainer != address(0), "Repository does not exist");
+        Repository storage repo = repositories[repoId];
+        require(repo.maintainer != address(0) && repo.isActive, "Repository does not exist");
         return repoId;
     }
 
