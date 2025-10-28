@@ -11,7 +11,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 // Uncomment this line to use console.log
-// import "hardhat/console.sol";
+import "hardhat/console.sol";
 
 contract Lock is ReentrancyGuard, Ownable {
     /**
@@ -51,7 +51,7 @@ contract Lock is ReentrancyGuard, Ownable {
     /**
      * @dev Allows the owner to withdraw all funds after the unlock time.
      * Access Control: Only the owner can call this function.
-     * Reentrancy: This function transfers the entire balance, which is safe from reentrancy as there are no subsequent calls to external contracts.
+     * Reentrancy: Protected with nonReentrant. Uses a value-bearing call to the owner; no state changes after the external call.
      * Requirements:
      * - Current time must be greater than or equal to unlockTime.
      * - Caller must be the owner.
@@ -59,15 +59,15 @@ contract Lock is ReentrancyGuard, Ownable {
      */
     function withdraw() public onlyOwner nonReentrant {
         // Uncomment this line, and the import of "hardhat/console.sol", to print a log in your terminal
-        // console.log("Unlock time is %o and block timestamp is %o", unlockTime, block.timestamp);
+                console.log("Lock: withdraw called, balance: %o", address(this).balance);
 
         require(block.timestamp >= unlockTime, "You can't withdraw yet");
 
 
         uint256 amount = address(this).balance;
-        emit Withdrawal(amount, block.timestamp);
         (bool ok, ) = payable(owner()).call{value: amount}("");
         require(ok, "ETH transfer failed");
+        emit Withdrawal(amount, block.timestamp);
     }
 
     // Accept plain ETH transfers after deployment

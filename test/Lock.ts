@@ -97,9 +97,8 @@ describe("Lock", function () {
           lock.address,
           { client: { wallet: otherAccount } }
         );
-        await expect(lockAsOtherAccount.write.withdraw()).to.be.rejectedWith(
-          "OwnableUnauthorizedAccount"
-        );
+        await expect(lockAsOtherAccount.write.withdraw())
+          .to.be.rejectedWith(/OwnableUnauthorizedAccount/);
       });
 
       it("Shouldn't fail if the unlockTime has arrived and the owner calls it", async function () {
@@ -181,7 +180,7 @@ describe("Lock", function () {
         // Verify that the lock contract still holds its funds (minus the initial 1n sent to malicious contract)
         expect(
           await publicClient.getBalance({ address: lock.address })
-        ).to.equal(parseGwei("10")); // Only the 10 ETH sent by owner should remain
+        ).to.equal(parseGwei("11")); // Initial 1 gwei + 10 gwei sent by owner should remain
       });
     });
   });
