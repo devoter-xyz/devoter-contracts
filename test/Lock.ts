@@ -161,8 +161,11 @@ describe("Lock", function () {
         const maliciousContract = await hre.viem.deployContract(
           "MaliciousReentrant",
           [lock.address],
-          { value: 1n } // Send some ETH to the malicious contract
+          { value: parseGwei("1") } // Send some ETH to the malicious contract
         );
+
+        // Make the malicious contract the owner of Lock
+        await lock.write.transferOwnership([maliciousContract.address]);
 
         // Fund the lock contract with more ETH for the attack
         await owner.sendTransaction({
@@ -172,13 +175,13 @@ describe("Lock", function () {
 
         // The malicious contract tries to attack
         await expect(maliciousContract.write.attack()).to.be.rejectedWith(
-          "ReentrancyGuard: reentrant call"
+          /ReentrancyGuard: reentrant call/
         );
 
         // Verify that the lock contract still holds its funds (minus the initial 1n sent to malicious contract)
         expect(
           await publicClient.getBalance({ address: lock.address })
-        ).to.equal(parseGwei("11")); // Initial 1 + 10 sent by owner
+        ).to.equal(parseGwei("10")); // Only the 10 ETH sent by owner should remain
       });
     });
   });

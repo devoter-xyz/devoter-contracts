@@ -64,8 +64,12 @@ contract Lock is ReentrancyGuard, Ownable {
         require(block.timestamp >= unlockTime, "You can't withdraw yet");
 
 
-        emit Withdrawal(address(this).balance, block.timestamp);
-
-        payable(owner()).transfer(address(this).balance);
+        uint256 amount = address(this).balance;
+        emit Withdrawal(amount, block.timestamp);
+        (bool ok, ) = payable(owner()).call{value: amount}("");
+        require(ok, "ETH transfer failed");
     }
+
+    // Accept plain ETH transfers after deployment
+    receive() external payable {}
 }
