@@ -21,8 +21,12 @@ contract MockDEVToken is ERC20Vote {
         string memory _name,
         string memory _symbol
     ) ERC20Vote(_defaultAdmin, _name, _symbol) {
+        require(bytes(_name).length > 0, "MockDEVToken: name cannot be empty");
+        require(bytes(_symbol).length > 0, "MockDEVToken: symbol cannot be empty");
+
         // Calculate initial supply: 1,000,000 * 10^18
         uint256 initialSupply = 1000000 * 10**decimals();
+        require(initialSupply > 0, "MockDEVToken: initial supply must be greater than zero");
         
         // Mint initial supply to default admin
         _mint(_defaultAdmin, initialSupply);
@@ -75,5 +79,17 @@ contract MockDEVToken is ERC20Vote {
             require(amounts[i] > 0, "MockDEVToken: mint amount must be greater than zero");
             _mint(to[i], amounts[i]);
         }
+    }
+
+    /**
+     * @notice Mints tokens to a specified address. Only callable by the contract owner.
+     * @dev This function is primarily for testing and development. Recipient address must not be zero, and amount must be greater than zero.
+     * @param to The address to receive the minted tokens.
+     * @param amount The amount of tokens to mint.
+     */
+    function mintFor(address to, uint256 amount) public onlyOwner {
+        require(to != address(0), "MockDEVToken: cannot mint to the zero address");
+        require(amount > 0, "MockDEVToken: mint amount must be greater than zero");
+        _mint(to, amount);
     }
 }
