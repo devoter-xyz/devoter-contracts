@@ -654,4 +654,68 @@ describe("RepositoryRegistry", function () {
             ).to.be.rejectedWith("Fee wallet cannot be zero");
         });
     });
+
+    describe("Repository Counter and Indexing", function () {
+        it("getRepoCounter should return the correct count", async function () {
+            expect(await repositoryRegistry.read.getRepoCounter()).to.equal(0n);
+
+            await repositoryRegistry.write.submitRepository(
+                ["Repo1", "Desc1", "https://github.com/repo1", ["tag1"]],
+                { account: maintainer1.account }
+            );
+            expect(await repositoryRegistry.read.getRepoCounter()).to.equal(1n);
+
+            await repositoryRegistry.write.submitRepository(
+                ["Repo2", "Desc2", "https://github.com/repo2", ["tag2"]],
+                { account: maintainer2.account }
+            );
+            expect(await repositoryRegistry.read.getRepoCounter()).to.equal(2n);
+
+            await repositoryRegistry.write.deactivateRepository([1n], { account: maintainer1.account });
+            expect(await repositoryRegistry.read.getRepoCounter()).to.equal(2n); // Deactivation does not change counter
+        });
+
+        it("getRepositoryIdAtIndex should return correct ID for valid index", async function () {
+            await repositoryRegistry.write.submitRepository(
+                ["Repo1", "Desc1", "https://github.com/repo1", ["tag1"]],
+                { account: maintainer1.account }
+            );
+            await repositoryRegistry.write.submitRepository(
+                ["Repo2", "Desc2", "https://github.com/repo2", ["tag2"]],
+                { account: maintainer2.account }
+            );
+
+            expect(await repositoryRegistry.read.getRepositoryIdAtIndex([0n])).to.equal(1n);
+            expect(await repositoryRegistry.read.getRepositoryIdAtIndex([1n])).to.equal(2n);
+        });
+
+        it("getRepositoryIdAtIndex should revert for out-of-bounds index", async function () {
+            await repositoryRegistry.write.submitRepository(
+                ["Repo1", "Desc1", "https://github.com/repo1", ["tag1"]],
+                { account: maintainer1.account }
+            );
+
+            await expect(repositoryRegistry.read.getRepositoryIdAtIndex([1n]))
+                .to.be.rejectedWith("Index out of bounds");
+            await expect(repositoryRegistry.read.getRepositoryIdAtIndex([999n]))
+                .to.be.rejectedWith("Index out of bounds");
+        });
+
+        it("getRepositoryIdAtIndex should revert for deactivated repository", async function () {
+            await repositoryRegistry.write.submitRepository(
+                ["Repo1", "Desc1", "https://github.com/repo1", ["tag1"]],
+                { account: maintainer1.account }
+            );
+            await repositoryRegistry.write.submitRepository(
+                ["Repo2", "Desc2", "https://github.com/repo2", ["tag2"]],
+                { account: maintainer2.account }
+            );
+
+            await repositoryRegistry.write.deactivateRepository([1n], { account: maintainer1.account });
+
+            await expect(repositoryRegistry.read.getRepositoryIdAtIndex([0n]))
+                .to.be.rejectedWith("Repository does not exist");
+            expect(await repositoryRegistry.read.getRepositoryIdAtIndex([1n])).to.equal(2n);
+        });
+    });
 });

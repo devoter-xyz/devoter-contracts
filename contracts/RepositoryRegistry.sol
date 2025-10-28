@@ -168,6 +168,14 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
     }
 
     /**
+     * @dev Get the total number of registered repositories.
+     * @return The current repository counter value.
+     */
+    function getRepoCounter() external view returns (uint256) {
+        return repoCounter;
+    }
+
+    /**
      * @dev Get active repositories with pagination
      * @param offset The starting index (0-based)
      * @param limit The maximum number of repositories to return
@@ -240,6 +248,8 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
      * @dev Get details for multiple repositories by their IDs.
      * @param ids An array of repository IDs to query.
      * @return An array of Repository structs corresponding to the provided IDs.
+     * @notice Returns default/empty structs (with zero address maintainer) for non-existent IDs.
+     *         Callers should check `maintainer != address(0)` to verify repository existence.
      */
     function getRepositoriesByIds(uint256[] calldata ids) external view returns (Repository[] memory) {
         Repository[] memory result = new Repository[](ids.length);
@@ -256,11 +266,9 @@ contract RepositoryRegistry is Ownable, ReentrancyGuard {
      * @return The ID of the repository at the given index. Returns 0 if the index is out of bounds.
      */
     function getRepositoryIdAtIndex(uint256 index) external view returns (uint256) {
-        // Adjust index to be 1-based for repoCounter
+        require(index < repoCounter, "Index out of bounds");
         uint256 repoId = index + 1;
-        if (repoId > repoCounter) {
-            return 0; // Or revert, depending on desired behavior for out-of-bounds. Returning 0 is more gas-efficient.
-        }
+        require(repositories[repoId].maintainer != address(0), "Repository does not exist");
         return repoId;
     }
 
