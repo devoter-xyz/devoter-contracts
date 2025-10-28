@@ -1232,7 +1232,6 @@ describe("DEVoterVoting", function () {
       [owner.account.address],
     );
 
-    // Deploy DEVoterVoting with explicit ABI and bytecode
     const devoterVoting = await hre.viem.deployContract("DEVoterVoting", [
       devoterEscrow.address,
       repositoryRegistry.address,
