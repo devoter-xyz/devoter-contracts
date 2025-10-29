@@ -555,6 +555,104 @@ describe("RepositoryRegistry", function () {
         });
     });
 
+    describe("getRepositoriesByIds", function () {
+        it("Should return correct details for valid IDs", async function () {
+            await repositoryRegistry.write.submitRepository(
+                ["Repo1", "Desc1", "https://github.com/repo1", ["tag1"]],
+                { account: maintainer1.account }
+            );
+            await repositoryRegistry.write.submitRepository(
+                ["Repo2", "Desc2", "https://github.com/repo2", ["tag2"]],
+                { account: maintainer2.account }
+            );
+
+            const repos = await repositoryRegistry.read.getRepositoriesByIds([[1n, 2n]]);
+            expect(repos.length).to.equal(2);
+
+            expect(repos[0].id).to.equal(1n);
+            expect(repos[0].name).to.equal("Repo1");
+            expect(repos[0].maintainer).to.equal(getAddress(maintainer1.account.address));
+
+            expect(repos[1].id).to.equal(2n);
+            expect(repos[1].name).to.equal("Repo2");
+            expect(repos[1].maintainer).to.equal(getAddress(maintainer2.account.address));
+        });
+
+        it("Should return zero-address maintainer for non-existent IDs", async function () {
+            await repositoryRegistry.write.submitRepository(
+                ["Repo1", "Desc1", "https://github.com/repo1", ["tag1"]],
+                { account: maintainer1.account }
+            );
+
+            const repos = await repositoryRegistry.read.getRepositoriesByIds([[99n, 100n]]);
+            expect(repos.length).to.equal(2);
+
+            expect(repos[0].id).to.equal(99n);
+            expect(repos[0].maintainer).to.equal(getAddress("0x0000000000000000000000000000000000000000"));
+            expect(repos[0].name).to.equal(""); // Default empty string
+
+            expect(repos[1].id).to.equal(100n);
+            expect(repos[1].maintainer).to.equal(getAddress("0x0000000000000000000000000000000000000000"));
+            expect(repos[1].name).to.equal("");
+        });
+
+        it("Should handle mixed valid and invalid IDs, preserving order", async function () {
+            await repositoryRegistry.write.submitRepository(
+                ["Repo1", "Desc1", "https://github.com/repo1", ["tag1"]],
+                { account: maintainer1.account }
+            );
+            await repositoryRegistry.write.submitRepository(
+                ["Repo2", "Desc2", "https://github.com/repo2", ["tag2"]],
+                { account: maintainer2.account }
+            );
+
+            const repos = await repositoryRegistry.read.getRepositoriesByIds([[1n, 99n, 2n]]);
+            expect(repos.length).to.equal(3);
+
+            expect(repos[0].id).to.equal(1n);
+            expect(repos[0].name).to.equal("Repo1");
+            expect(repos[0].maintainer).to.equal(getAddress(maintainer1.account.address));
+
+            expect(repos[1].id).to.equal(99n);
+            expect(repos[1].maintainer).to.equal(getAddress("0x0000000000000000000000000000000000000000"));
+
+            expect(repos[2].id).to.equal(2n);
+            expect(repos[2].name).to.equal("Repo2");
+            expect(repos[2].maintainer).to.equal(getAddress(maintainer2.account.address));
+        });
+
+        it("Should return an empty array for empty input", async function () {
+            const repos = await repositoryRegistry.read.getRepositoriesByIds([[]]);
+            expect(repos.length).to.equal(0);
+            expect(repos).to.deep.equal([]);
+        });
+
+        // Optional: Test with a large array input if contract has limits or specific behavior
+        it("Should handle a large array of valid IDs", async function () {
+            const numRepos = 50;
+            // Mint additional tokens for maintainer1 to cover all submissions
+            await mockDEVToken.write.mintTo([maintainer1.account.address, parseEther("500")], { account: owner.account });
+            // Increase allowance for maintainer1 to cover all submissions
+            await mockDEVToken.write.approve([repositoryRegistry.address, parseEther("1000000")], { account: maintainer1.account });
+            const repoIds: bigint[] = [];
+            for (let i = 0; i < numRepos; i++) {
+                await repositoryRegistry.write.submitRepository(
+                    [`Repo${i}`, `Desc${i}`, `https://github.com/repo${i}`, [`tag${i}`]],
+                    { account: maintainer1.account }
+                );
+                repoIds.push(BigInt(i + 1));
+            }
+
+            const repos = await repositoryRegistry.read.getRepositoriesByIds([repoIds]);
+            expect(repos.length).to.equal(numRepos);
+            for (let i = 0; i < numRepos; i++) {
+                expect(repos[i].id).to.equal(BigInt(i + 1));
+                expect(repos[i].name).to.equal(`Repo${i}`);
+                expect(repos[i].maintainer).to.equal(getAddress(maintainer1.account.address));
+            }
+        });
+    });
+
     describe("Fee management", function () {
         it("setSubmissionFee: only owner can call and validates fee updates", async function () {
             const oldFee = await repositoryRegistry.read.submissionFee();
@@ -652,6 +750,70 @@ describe("RepositoryRegistry", function () {
             await expect(
                 repositoryRegistry.write.setFeeWallet([getAddress("0x0000000000000000000000000000000000000000")], { account: owner.account })
             ).to.be.rejectedWith("Fee wallet cannot be zero");
+        });
+    });
+
+    describe("Repository Counter and Indexing", function () {
+        it("getRepoCounter should return the correct count", async function () {
+            expect(await repositoryRegistry.read.getRepoCounter()).to.equal(0n);
+
+            await repositoryRegistry.write.submitRepository(
+                ["Repo1", "Desc1", "https://github.com/repo1", ["tag1"]],
+                { account: maintainer1.account }
+            );
+            expect(await repositoryRegistry.read.getRepoCounter()).to.equal(1n);
+
+            await repositoryRegistry.write.submitRepository(
+                ["Repo2", "Desc2", "https://github.com/repo2", ["tag2"]],
+                { account: maintainer2.account }
+            );
+            expect(await repositoryRegistry.read.getRepoCounter()).to.equal(2n);
+
+            await repositoryRegistry.write.deactivateRepository([1n], { account: maintainer1.account });
+            expect(await repositoryRegistry.read.getRepoCounter()).to.equal(2n); // Deactivation does not change counter
+        });
+
+        it("getRepositoryIdAtIndex should return correct ID for valid index", async function () {
+            await repositoryRegistry.write.submitRepository(
+                ["Repo1", "Desc1", "https://github.com/repo1", ["tag1"]],
+                { account: maintainer1.account }
+            );
+            await repositoryRegistry.write.submitRepository(
+                ["Repo2", "Desc2", "https://github.com/repo2", ["tag2"]],
+                { account: maintainer2.account }
+            );
+
+            expect(await repositoryRegistry.read.getRepositoryIdAtIndex([0n])).to.equal(1n);
+            expect(await repositoryRegistry.read.getRepositoryIdAtIndex([1n])).to.equal(2n);
+        });
+
+        it("getRepositoryIdAtIndex should revert for out-of-bounds index", async function () {
+            await repositoryRegistry.write.submitRepository(
+                ["Repo1", "Desc1", "https://github.com/repo1", ["tag1"]],
+                { account: maintainer1.account }
+            );
+
+            await expect(repositoryRegistry.read.getRepositoryIdAtIndex([1n]))
+                .to.be.rejectedWith("Index out of bounds");
+            await expect(repositoryRegistry.read.getRepositoryIdAtIndex([999n]))
+                .to.be.rejectedWith("Index out of bounds");
+        });
+
+        it("getRepositoryIdAtIndex should revert for deactivated repository", async function () {
+            await repositoryRegistry.write.submitRepository(
+                ["Repo1", "Desc1", "https://github.com/repo1", ["tag1"]],
+                { account: maintainer1.account }
+            );
+            await repositoryRegistry.write.submitRepository(
+                ["Repo2", "Desc2", "https://github.com/repo2", ["tag2"]],
+                { account: maintainer2.account }
+            );
+
+            await repositoryRegistry.write.deactivateRepository([1n], { account: maintainer1.account });
+
+            await expect(repositoryRegistry.read.getRepositoryIdAtIndex([0n]))
+                .to.be.rejectedWith("Repository does not exist");
+            expect(await repositoryRegistry.read.getRepositoryIdAtIndex([1n])).to.equal(2n);
         });
     });
 });
