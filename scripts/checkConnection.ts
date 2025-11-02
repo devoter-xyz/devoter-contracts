@@ -37,7 +37,7 @@ async function main() {
     } else {
       // No custom url or timeout: use default configured client
       publicClient = await hre.viem.getPublicClient();
-      console.log('Using Hardhat's default configured RPC client.');
+      console.log("Using Hardhat's default configured RPC client.");
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
