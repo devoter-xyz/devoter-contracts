@@ -1,5 +1,5 @@
 import * as hre from "hardhat";
-import { PublicClient } from "viem";
+import { PublicClient, http } from "viem";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -20,35 +20,41 @@ async function main() {
     }
   }
 
-  if (rpcUrl) {
-    (hre.network.config as any).url = rpcUrl;
-    console.log(`Using custom RPC URL: ${rpcUrl}`);
-  }
-
-  if (timeout) {
-    // Hardhat doesn't have a direct 'timeout' config for viem client,
-    // but we can set a network-level timeout if it's a custom network.
-    // For simplicity, we'll just log it for now or assume it's handled by the RPC provider.
-    console.log(`Using custom timeout: ${timeout}ms`);
-  }
+  const configuredUrl = typeof hre.network.config.url === 'string' ? hre.network.config.url : undefined;
+  const effectiveUrl = rpcUrl ?? configuredUrl;
 
   let publicClient: PublicClient;
   try {
-    publicClient = await (hre as any).viem.getPublicClient();
-  } catch (error: any) {
+    if (effectiveUrl || timeout) {
+      if (!effectiveUrl) {
+        console.error('No RPC URL available (neither --rpc provided nor network.config.url).');
+        process.exit(1);
+      }
+      // Build transport options, include timeout only if defined
+      const transport = http(effectiveUrl, timeout ? { timeout } : undefined);
+      publicClient = await hre.viem.getPublicClient({ transport });
+      console.log(`Using RPC URL: ${effectiveUrl}${timeout ? ` with timeout: ${timeout}ms` : ''}`);
+    } else {
+      // No custom url or timeout: use default configured client
+      publicClient = await hre.viem.getPublicClient();
+      console.log('Using Hardhat's default configured RPC client.');
+    }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error("Failed to connect to the network using Hardhat's configured RPC URL.");
     console.error("Please check your network configuration or provide a valid --rpc URL.");
-    console.error(`Error: ${error.message || error}`);
+    console.error(`Error: ${message}`);
     process.exit(1);
   }
 
   let blockNumber: bigint;
   try {
     blockNumber = await publicClient.getBlockNumber();
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error("Failed to retrieve the current block number.");
     console.error("The connection to the RPC might be unstable or the RPC URL is incorrect.");
-    console.error(`Error: ${error.message || error}`);
+    console.error(`Error: ${message}`);
     process.exit(1);
   }
 
@@ -58,8 +64,9 @@ async function main() {
 
 main()
   .then(() => process.exit(0))
-  .catch((error: any) => {
+  .catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
     console.error("An unexpected error occurred:");
-    console.error(error);
+    console.error(message);
     process.exit(1);
   });
