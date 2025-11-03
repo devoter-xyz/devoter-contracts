@@ -4,24 +4,35 @@
 // To run this module, use the command: `npx hardhat ignition deploy <module_name>`
 // For example: `npx hardhat ignition deploy DEVoterEscrowModule`
 
-import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
+import { buildModule, Contract } from "@nomicfoundation/hardhat-ignition/modules";
 import { parseEther } from "viem";
 
+/**
+ * @dev This module deploys the MockDEVToken and DEVoterEscrow contracts.
+ * It uses Hardhat Ignition to manage the deployment process.
+ */
 const DEVoterEscrowModule = buildModule("DEVoterEscrowModule", (m) => {
-  // Deploy MockDEVToken first
-  const mockDEVToken = m.contract("MockDEVToken", [
-    m.getParameter("defaultAdmin"),
-    "Mock DEV Token",
-    "mDEV",
-  ]);
+  // Helper function to deploy MockDEVToken
+  const deployMockDEVToken = () => {
+    return m.contract("MockDEVToken", [
+      m.getParameter("defaultAdmin"),
+      "Mock DEV Token",
+      "mDEV",
+    ]);
+  };
 
-  // Deploy DEVoterEscrow with basis points fee system
-  const dEVoterEscrow = m.contract("DEVoterEscrow", [
-    mockDEVToken,
-    m.getParameter("feeWallet"),
-    m.getParameter("feeBasisPoints", 500), // 5% = 500 basis points
-    m.getParameter("votingPeriod", 30 * 24 * 60 * 60), // 30 days
-  ]);
+  // Helper function to deploy DEVoterEscrow
+  const deployDEVoterEscrow = (mockDEVToken: Contract) => {
+    return m.contract("DEVoterEscrow", [
+      mockDEVToken,
+      m.getParameter("feeWallet"),
+      m.getParameter("feeBasisPoints", 500), // 5% = 500 basis points
+      m.getParameter("votingPeriod", 30 * 24 * 60 * 60), // 30 days
+    ]);
+  };
+
+  const mockDEVToken = deployMockDEVToken();
+  const dEVoterEscrow = deployDEVoterEscrow(mockDEVToken);
 
   return { mockDEVToken, dEVoterEscrow };
 });
