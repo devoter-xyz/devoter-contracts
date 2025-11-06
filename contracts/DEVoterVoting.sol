@@ -15,8 +15,12 @@ error WithdrawalDeadlinePassed(uint256 deadline, uint256 currentTime);
  * @dev Main voting contract that interfaces with DEVoterEscrow and RepositoryRegistry
  */
 contract DEVoterVoting is Ownable, ReentrancyGuard {
-    DEVoterEscrow public escrowContract;
-    RepositoryRegistry public registryContract;
+    DEVoterEscrow public escrowContract; /**
+     * @dev Instance of the DEVoterEscrow contract for managing token escrows.
+     */
+    RepositoryRegistry public registryContract; /**
+     * @dev Instance of the RepositoryRegistry contract for managing registered repositories.
+     */
     
     // ===== VOTE TRACKING DATA STRUCTURES =====
     
@@ -59,7 +63,9 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
     mapping(uint256 => RepositoryVoteData) public repositoryVotes;
     
     /// @dev Tracks the amount each user voted for each repository
-    mapping(uint256 => mapping(address => uint256)) public userVotesByRepository;
+    mapping(uint256 => mapping(address => uint256)) public userVotesByRepository; /**
+     * @dev Mapping from repository ID to user address to the amount of tokens voted by that user for that repository.
+     */
     
     // ===== WITHDRAWAL TRACKING MAPPINGS =====
     
@@ -73,9 +79,15 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
     mapping(address => mapping(uint256 => uint256)) public remainingVotes;
     
     // ===== VOTING PERIOD STATE VARIABLES =====
-    bool public isVotingActive;
-    uint256 public votingStartTime;
-    uint256 public votingEndTime;
+    bool public isVotingActive; /**
+     * @dev Indicates whether a voting period is currently active.
+     */
+    uint256 public votingStartTime; /**
+     * @dev The timestamp when the current voting period started.
+     */
+    uint256 public votingEndTime; /**
+     * @dev The timestamp when the current voting period will end.
+     */
     
     // ===== WITHDRAWAL RESTRICTION CONSTANTS =====
     /// @dev 24-hour withdrawal restriction period before voting ends
@@ -104,14 +116,30 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
     );
     
         event PartialWithdrawal(
-            address indexed user,
+            address indexed user, /**
+             * @dev Emitted when a user performs a partial withdrawal of their vote.
+             * @param user The address of the user who withdrew tokens.
+             * @param repositoryId The ID of the repository from which tokens were withdrawn.
+             * @param withdrawnAmount The amount of tokens withdrawn in this transaction.
+             * @param remainingAmount The remaining amount of tokens still available for withdrawal for this vote.
+             */
             uint256 indexed repositoryId,
             uint256 withdrawnAmount,
             uint256 remainingAmount
         );
     
-        event EmergencyWithdrawalRequiresManualEscrowUpdate(address user, uint256 amount);
-        event EmergencyWithdrawalExecuted(address user, uint256 repositoryId, uint256 amount, address admin);    
+        event EmergencyWithdrawalRequiresManualEscrowUpdate(address user, uint256 amount); /**
+         * @dev Emitted when an emergency withdrawal is executed but the escrow contract could not be updated automatically.
+         * @param user The address of the user whose escrow needs manual adjustment.
+         * @param amount The amount that was intended to be withdrawn from escrow.
+         */
+        event EmergencyWithdrawalExecuted(address user, uint256 repositoryId, uint256 amount, address admin);    /**
+         * @dev Emitted when an emergency withdrawal is successfully executed by an admin.
+         * @param user The address of the user whose vote was emergency withdrawn.
+         * @param repositoryId The ID of the repository from which the vote was withdrawn.
+         * @param amount The amount of tokens emergency withdrawn.
+         * @param admin The address of the administrator who performed the emergency withdrawal.
+         */    
     /**
      * @dev Constructor to initialize the voting contract
      * @param _escrow Address of the DEVoterEscrow contract
@@ -534,6 +562,13 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
     
     // ===== VOTE WITHDRAWAL FUNCTIONS =====
 
+    /**
+     * @dev Allows a user to withdraw a specified amount of their vote from a repository.
+     * Includes comprehensive error handling with custom error types.
+     * @param repositoryId The ID of the repository from which to withdraw the vote.
+     * @param amount The amount of tokens to withdraw.
+     * @notice Withdrawals are subject to a restriction period before the voting ends.
+     */
     function withdrawVoteWithErrorHandling(uint256 repositoryId, uint256 amount) 
         external 
         nonReentrant 
@@ -603,6 +638,14 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
         }
     }
 
+        /**
+         * @dev Allows the contract owner to forcibly withdraw a user's vote from a repository in emergency situations.
+         * This function attempts to update the escrow contract but logs an event if it fails, requiring manual intervention.
+         * @param user The address of the user whose vote is to be withdrawn.
+         * @param repositoryId The ID of the repository from which the vote is to be withdrawn.
+         * @param amount The amount of tokens to withdraw. If this exceeds the available amount, the available amount will be withdrawn.
+         * @notice This function is for emergency use only and bypasses normal withdrawal restrictions.
+         */
         function emergencyWithdrawalOverride(address user, uint256 repositoryId, uint256 amount)
             external onlyOwner
         {
@@ -649,6 +692,13 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
                 );
             }
         }
+    /**
+     * @dev Internal function to update repository vote totals and user vote tracking after a withdrawal.
+     * @param user The address of the user who performed the withdrawal.
+     * @param repositoryId The ID of the repository affected.
+     * @param amount The amount of tokens withdrawn.
+     * @param fullWithdrawal True if this was a full withdrawal of the user's vote for the repository, false otherwise.
+     */
     function updateRepositoryTotals(address user, uint256 repositoryId, uint256 amount, bool fullWithdrawal) internal {
         RepositoryVoteData storage repoData = repositoryVotes[repositoryId];
         // Always decrease total votes

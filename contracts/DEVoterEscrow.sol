@@ -351,6 +351,12 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
      * This function can only be called by the contract owner.
      * @param _votingContractAddress The address of the DEVoterVoting contract.
      */
+    /**
+     * @dev Sets the address of the DEVoterVoting contract and grants it the `VOTING_CONTRACT_ROLE`.
+     * This function can only be called by the contract owner.
+     * @param _votingContractAddress The address of the DEVoterVoting contract.
+     * @notice This function is critical for integrating with the voting mechanism.
+     */
     function setVotingContractAddress(address _votingContractAddress) external onlyOwner {
         require(_votingContractAddress != address(0), "Invalid voting contract address");
         devoterVotingContractAddress = _votingContractAddress;
@@ -358,6 +364,9 @@ contract DEVoterEscrow is ReentrancyGuard, Ownable, Pausable, AccessControl {
         // Optionally, revoke from previous if needed, but for initial setup, granting is enough.
     }
 
+    /**
+     * @dev Throws if the contract is paused and the caller does not have the `EMERGENCY_ROLE`.
+     */
     modifier whenNotPausedOrEmergency() {
         require(!paused() || hasRole(EMERGENCY_ROLE, msg.sender), "Pausable: paused");
         _;
