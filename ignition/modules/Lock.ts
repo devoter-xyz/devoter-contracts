@@ -1,40 +1,30 @@
-// This setup uses Hardhat Ignition to manage smart contract deployments.
-// Learn more about it at https://hardhat.org/ignition
-//
-// To run this module, use the command: `npx hardhat ignition deploy <module_name>`
-// For example: `npx hardhat ignition deploy DEVoterEscrowModule`
-
-import { buildModule, Contract } from "@nomicfoundation/hardhat-ignition/modules";
-import { parseEther } from "viem";
-
 /**
- * @dev This module deploys the MockDEVToken and DEVoterEscrow contracts.
- * It uses Hardhat Ignition to manage the deployment process.
+ * @title LockModule
+ * @author The Gemini CLI
+ * @notice This module deploys the Lock contract.
+ * @dev This module uses Hardhat Ignition to manage the deployment process of the Lock contract.
+ * The Lock contract is a simple time-locked contract that allows the owner to withdraw funds after a specified unlock time.
+ *
+ * To deploy this module, use the command:
+ * `npx hardhat ignition deploy ignition/modules/Lock.ts --parameters '{"unlockTime": <timestamp_in_seconds>}'`
+ *
+ * Example:
+ * `npx hardhat ignition deploy ignition/modules/Lock.ts --parameters '{"unlockTime": 1735689600}'`
+ * (This example uses an unlock time of January 1, 2025, 00:00:00 UTC)
  */
-const DEVoterEscrowModule = buildModule("DEVoterEscrowModule", (m) => {
-  // Helper function to deploy MockDEVToken
-  const deployMockDEVToken = () => {
-    return m.contract("MockDEVToken", [
-      m.getParameter("defaultAdmin"),
-      "Mock DEV Token",
-      "mDEV",
-    ]);
-  };
+import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
 
-  // Helper function to deploy DEVoterEscrow
-  const deployDEVoterEscrow = (mockDEVToken: Contract) => {
-    return m.contract("DEVoterEscrow", [
-      mockDEVToken,
-      m.getParameter("feeWallet"),
-      m.getParameter("feeBasisPoints", 500), // 5% = 500 basis points
-      m.getParameter("votingPeriod", 30 * 24 * 60 * 60), // 30 days
-    ]);
-  };
+const LockModule = buildModule("LockModule", (m) => {
+  // Define the unlock time parameter for the Lock contract constructor.
+  // This parameter must be provided during deployment.
+  const unlockTime = m.getParameter("unlockTime", 0);
 
-  const mockDEVToken = deployMockDEVToken();
-  const dEVoterEscrow = deployDEVoterEscrow(mockDEVToken);
+  // Deploy the Lock contract.
+  // The constructor requires an unlock time (uint).
+  const lock = m.contract("Lock", [unlockTime]);
 
-  return { mockDEVToken, dEVoterEscrow };
+  // Return the deployed contract to make it accessible from other modules or for verification.
+  return { lock };
 });
 
-export default DEVoterEscrowModule;
+export default LockModule;
