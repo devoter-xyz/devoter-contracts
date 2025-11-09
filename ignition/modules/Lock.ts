@@ -9,15 +9,15 @@
  * `npx hardhat ignition deploy ignition/modules/Lock.ts --parameters '{"unlockTime": <timestamp_in_seconds>}'`
  *
  * Example:
- * `npx hardhat ignition deploy ignition/modules/Lock.ts --parameters '{"unlockTime": 1735689600}'`
- * (This example uses an unlock time of January 1, 2025, 00:00:00 UTC)
+ * `npx hardhat ignition deploy ignition/modules/Lock.ts --parameters '{"unlockTime": 1767225600}'`
+ * (This example uses an unlock time of January 1, 2026, 00:00:00 UTC)
  */
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
 
 const LockModule = buildModule("LockModule", (m) => {
   // Define the unlock time parameter for the Lock contract constructor.
   // This parameter must be provided during deployment.
-  const unlockTime = m.getParameter("unlockTime", 0);
+  const unlockTime = m.getParameter<number>("unlockTime");
 
   // Deploy the Lock contract.
   // The constructor requires an unlock time (uint).
