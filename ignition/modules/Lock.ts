@@ -6,10 +6,10 @@
  * The Lock contract is a simple time-locked contract that allows the owner to withdraw funds after a specified unlock time.
  *
  * To deploy this module, use the command:
- * `npx hardhat ignition deploy ignition/modules/Lock.ts --parameters '{"unlockTime": <timestamp_in_seconds>}'`
+ * `npx hardhat ignition deploy ignition/modules/Lock.ts --parameters '{"unlockTime": <timestamp_in_seconds>, "lockedAmount": "<amount_in_wei_as_string>"}'`
  *
  * Example:
- * `npx hardhat ignition deploy ignition/modules/Lock.ts --parameters '{"unlockTime": 1767225600}'`
+ * `npx hardhat ignition deploy ignition/modules/Lock.ts --parameters '{"unlockTime": 1767225600, "lockedAmount": "1000000000000000000"}'`
  * (This example uses an unlock time of January 1, 2026, 00:00:00 UTC)
  */
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
