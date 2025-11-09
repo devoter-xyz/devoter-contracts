@@ -181,6 +181,38 @@ describe("Lock", function () {
           await publicClient.getBalance({ address: lock.address })
         ).to.equal(parseGwei("11")); // Initial 1 gwei + 10 gwei = 11 gwei
       });
+
+      it("Should revert with 'ReentrancyGuard: reentrant call' on a reentrant attempt", async function () {
+        const { lock, unlockTime, owner, publicClient } = await loadFixture(
+          deployOneYearLockFixture
+        );
+
+        await time.increaseTo(unlockTime);
+
+        // Deploy the malicious contract
+        const maliciousContract = await hre.viem.deployContract(
+          "MaliciousReentrant",
+          [lock.address],
+          { value: parseGwei("1") } // Send some ETH to the malicious contract
+        );
+
+        // Make the malicious contract the owner of Lock
+        await lock.write.transferOwnership([maliciousContract.address]);
+
+        // Fund the lock contract with more ETH for the attack
+        await owner.sendTransaction({
+          to: lock.address,
+          value: parseGwei("10"),
+        });
+
+        await expect(maliciousContract.write.attack())
+          .to.be.rejectedWith(/ReentrancyGuard: reentrant call/);
+
+        // Verify that the lock contract still holds its funds
+        expect(
+          await publicClient.getBalance({ address: lock.address })
+        ).to.equal(parseGwei("11")); // Initial 1 gwei + 10 gwei = 11 gwei
+      });
     });
   });
 });
