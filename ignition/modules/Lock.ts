@@ -18,10 +18,11 @@ const LockModule = buildModule("LockModule", (m) => {
   // Define the unlock time parameter for the Lock contract constructor.
   // This parameter must be provided during deployment.
   const unlockTime = m.getParameter<number>("unlockTime");
+  const lockedAmount = m.getParameter<bigint>("lockedAmount");
 
   // Deploy the Lock contract.
   // The constructor requires an unlock time (uint).
-  const lock = m.contract("Lock", [unlockTime]);
+  const lock = m.contract("Lock", [unlockTime], { value: lockedAmount });
 
   // Return the deployed contract to make it accessible from other modules or for verification.
   return { lock };
