@@ -205,9 +205,8 @@ describe("Lock", function () {
           value: parseGwei("10"),
         });
 
-        // The malicious contract tries to attack, expecting a reentrancy guard error
         await expect(maliciousContract.write.attack())
-          .to.be.rejectedWith(/ETH transfer failed/);
+          .to.be.rejectedWith(/ReentrancyGuard: reentrant call/);
 
         // Verify that the lock contract still holds its funds
         expect(
