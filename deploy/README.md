@@ -51,3 +51,60 @@ npx hardhat run scripts/deploy-mock-token.ts --network <network-name>
 ```bash
 npx hardhat run scripts/deploy-mock-token.ts --network baseSepolia
 ```
+
+## Minimal Deployment Snippet
+
+This snippet demonstrates how to deploy `MockDEVToken`, `RepositoryRegistry`, and `DEVoterTreasury` contracts.
+
+**Related Contracts:**
+- `contracts/MockDEVToken.sol`
+- `contracts/RepositoryRegistry.sol`
+- `contracts/DEVoterTreasury.sol`
+
+**Usage:**
+
+Create a new file, for example, `scripts/deploy-minimal.ts`, and paste the following content:
+
+```typescript
+import { ethers } from "hardhat";
+
+async function main() {
+  // Deploy MockDEVToken
+  const MockDEVToken = await ethers.getContractFactory("MockDEVToken");
+  const mockDEVToken = await MockDEVToken.deploy();
+  await mockDEVToken.waitForDeployment();
+  console.log(`MockDEVToken deployed to: ${mockDEVToken.target}`);
+
+  // Deploy RepositoryRegistry
+  const RepositoryRegistry = await ethers.getContractFactory("RepositoryRegistry");
+  const repositoryRegistry = await RepositoryRegistry.deploy();
+  await repositoryRegistry.waitForDeployment();
+  console.log(`RepositoryRegistry deployed to: ${repositoryRegistry.target}`);
+
+  // Deploy DEVoterTreasury
+  // DEVoterTreasury constructor requires a token address and an owner address.
+  // We'll use the deployed MockDEVToken address and the deployer's address as the owner.
+  const [deployer] = await ethers.getSigners();
+  const DEVoterTreasury = await ethers.getContractFactory("DEVoterTreasury");
+  const devoterTreasury = await DEVoterTreasury.deploy(mockDEVToken.target, deployer.address);
+  await devoterTreasury.waitForDeployment();
+  console.log(`DEVoterTreasury deployed to: ${devoterTreasury.target}`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
+
+Then, run the script using Hardhat:
+
+```bash
+npx hardhat run scripts/deploy-minimal.ts --network <network-name>
+```
+
+**Example:**
+
+```bash
+npx hardhat run scripts/deploy-minimal.ts --network baseSepolia
+```
