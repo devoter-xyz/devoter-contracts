@@ -17,4 +17,4 @@ cd scripts
 ./empty-db.sh --help
 ```
 
-Ensure you have the necessary permissions to execute the shell script (`chmod +x empty-db.sh`).
+Ensure you have the necessary permissions to execute both scripts (`chmod +x empty-db.sh empty-db.js`).

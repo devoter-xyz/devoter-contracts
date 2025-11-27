@@ -15,7 +15,7 @@ function print_usage() {
   echo ""
 }
 
-if [[ "$*" =~ (^|\ |)"(--help|-h)"( |$) ]] || [[ $# -eq 0 ]]; then
+if [[ "$*" == *"--help"* || "$*" == *"-h"* || $# -eq 0 ]]; then
   print_usage
   exit 0
 fi
