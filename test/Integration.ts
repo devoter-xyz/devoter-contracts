@@ -4,8 +4,21 @@ import {
 import { expect } from "chai";
 import hre from "hardhat";
 import { getAddress, parseEther } from "viem";
+import { deployVotingFixture } from "./minimalDeploy";
 
 describe("Integration Tests", function () {
+  describe("Minimal Deployment Integration", function () {
+    it("should deploy all contracts successfully", async function () {
+      const { devoterVoting, devoterEscrow, mockDEVToken, repositoryRegistry } =
+        await loadFixture(deployVotingFixture);
+
+      expect(devoterVoting.address).to.not.be.undefined;
+      expect(devoterEscrow.address).to.not.be.undefined;
+      expect(mockDEVToken.address).to.not.be.undefined;
+      expect(repositoryRegistry.address).to.not.be.undefined;
+    });
+  });
+
   async function deployContractsFixture() {
     const [owner, otherAccount, thirdAccount] =
       await hre.viem.getWalletClients();
