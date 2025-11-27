@@ -10,7 +10,7 @@ pragma solidity ^0.8.0;
  * Key constants for fee calculation:
  * - BASIS_POINTS_DENOMINATOR = 10000 (for 0.01% precision)
  * - MAX_FEE_BASIS_POINTS = 500 (representing 5%)
- * - MIN_FEE_BASIS_POINTS = 0 (representing 0%)
+ * - MIN_FEE_BASIS_POINTS = 0 (representing 0%, defined in DEVoterEscrow.sol)
  *
  * Integer division truncates (rounds down). Small amounts may yield a zero fee.
  * The computed fee is typically capped so it never exceeds the `amount`.
