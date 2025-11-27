@@ -15,10 +15,10 @@ error WithdrawalDeadlinePassed(uint256 deadline, uint256 currentTime);
  * @dev Main voting contract that interfaces with DEVoterEscrow and RepositoryRegistry
  */
 contract DEVoterVoting is Ownable, ReentrancyGuard {
-    DEVoterEscrow public escrowContract; /**
+    DEVoterEscrow public immutable escrowContract; /**
      * @dev Instance of the DEVoterEscrow contract for managing token escrows.
      */
-    RepositoryRegistry public registryContract; /**
+    RepositoryRegistry public immutable registryContract; /**
      * @dev Instance of the RepositoryRegistry contract for managing registered repositories.
      */
     
@@ -91,7 +91,7 @@ contract DEVoterVoting is Ownable, ReentrancyGuard {
     
     // ===== WITHDRAWAL RESTRICTION CONSTANTS =====
     /// @dev 24-hour withdrawal restriction period before voting ends
-    uint256 public constant WITHDRAWAL_RESTRICTION_PERIOD = 24 hours;
+    uint256 public immutable WITHDRAWAL_RESTRICTION_PERIOD = 24 hours;
     
     // ===== EVENTS =====
     
