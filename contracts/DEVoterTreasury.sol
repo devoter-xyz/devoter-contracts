@@ -2,8 +2,23 @@
 pragma solidity ^0.8.0;
 
 /**
+ * @notice Protocol Fee Calculation System Overview
+ * @dev This contract is part of a system that may involve fee calculations.
+ * The canonical formula for fee calculation across the protocol is:
+ * `fee = (amount * feeBasisPoints) / BASIS_POINTS_DENOMINATOR`
+ *
+ * Key constants for fee calculation:
+ * - BASIS_POINTS_DENOMINATOR = 10000 (for 0.01% precision)
+ * - MAX_FEE_BASIS_POINTS = 500 (representing 5%)
+ * - MIN_FEE_BASIS_POINTS = 0 (representing 0%)
+ *
+ * Integer division truncates (rounds down). Small amounts may yield a zero fee.
+ * The computed fee is typically capped so it never exceeds the `amount`.
+ * For a comprehensive explanation, refer to `docs/FeeCalculationSystem.md`.
+ */
+/**
  * @title DEVoterTreasury
- * @dev A treasury contract to securely hold and manage protocol funds, with controlled withdrawal mechanisms.
+ * @dev A treasury contract to securely hold and manage protocol funds, with controlled withdrawal mechanisms. For details on fee calculation, refer to docs/FeeCalculationSystem.md.
  */
 contract DEVoterTreasury {
     address public owner; /**
@@ -15,6 +30,9 @@ contract DEVoterTreasury {
     mapping(address => bool) public authorized; /**
      * @dev Mapping to track which addresses are authorized to perform withdrawals.
      */
+
+    uint256 public constant BASIS_POINTS_DENOMINATOR = 10000;
+    uint256 public constant MAX_FEE_BASIS_POINTS = 500; // Represents 5%
 
     event Deposit(address indexed from, uint256 amount);
     event Withdrawal(address indexed to, uint256 amount);
