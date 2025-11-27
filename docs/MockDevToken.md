@@ -23,7 +23,9 @@ MockDEVToken is an ERC20 token with voting capabilities, built on top of Thirdwe
 ### Core Functions
 
 - `mintTo(address to, uint256 amount)` - Mint tokens to a specific address (owner only)
-- `batchMintTo(address[] to, uint256[] amounts)` - Batch mint tokens to multiple addresses
+- `batchMintTo(address[] to, uint256[] amounts)` - Batch mint tokens to multiple addresses (owner only)
+- `mintFor(address to, uint256 amount)` - Mint tokens to a specific address (owner only, primarily for testing)
+- `burn(uint256 amount)` - Burn tokens from the caller's account
 - `delegate(address delegatee)` - Delegate voting power to another address
 - `getVotes(address account)` - Get current voting power of an address
 
@@ -49,16 +51,28 @@ Comprehensive tests are available in [test/MockDEVToken.ts](../test/MockDEVToken
 
 ## Usage Example
 
-```typescript
-// Deploy the contract
-const mockDEVToken = await hre.viem.deployContract("MockDEVToken", [
-  ownerAddress,
-  "Mock DEV Token",
-  "mDEV",
-]);
+MockDEVToken is deployed with an initial supply of 1,000,000 tokens (with 18 decimals) to the `_defaultAdmin` address. The constructor requires `_defaultAdmin` (address), `_name` (string), and `_symbol` (string).
 
-// Mint tokens to an address
-await mockDEVToken.write.mintTo([recipientAddress, parseEther("1000")]);
+```typescript
+import { parseEther } from "viem";
+
+// Deploy the contract
+const [owner, addr1, addr2] = await hre.ethers.getSigners();
+const MockDEVToken = await hre.ethers.getContractFactory("MockDEVToken");
+const mockDEVToken = await MockDEVToken.deploy(owner.address, "Mock DEV Token", "mDEV");
+await mockDEVToken.waitForDeployment();
+
+// Mint tokens to an address (owner only)
+await mockDEVToken.mintTo(addr1.address, parseEther("1000"));
+
+// Mint tokens using mintFor (owner only, for testing)
+await mockDEVToken.mintFor(addr2.address, parseEther("500"));
+
+// Transfer tokens
+await mockDEVToken.connect(addr1).transfer(addr2.address, parseEther("100"));
+
+// Burn tokens from an address
+await mockDEVToken.connect(addr2).burn(parseEther("50"));
 
 // Delegate voting power
-await mockDEVToken.write.delegate([delegateAddress]);
+await mockDEVToken.connect(addr1).delegate(addr2.address);
