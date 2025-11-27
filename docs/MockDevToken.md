@@ -54,7 +54,6 @@ Comprehensive tests are available in [test/MockDEVToken.ts](../test/MockDEVToken
 MockDEVToken is deployed with an initial supply of 1,000,000 tokens (with 18 decimals) to the `_defaultAdmin` address. The constructor requires `_defaultAdmin` (address), `_name` (string), and `_symbol` (string).
 
 ```typescript
-import { parseEther } from "viem";
 
 // Deploy the contract
 const [owner, addr1, addr2] = await hre.ethers.getSigners();
@@ -63,16 +62,16 @@ const mockDEVToken = await MockDEVToken.deploy(owner.address, "Mock DEV Token", 
 await mockDEVToken.waitForDeployment();
 
 // Mint tokens to an address (owner only)
-await mockDEVToken.mintTo(addr1.address, parseEther("1000"));
+await mockDEVToken.mintTo(addr1.address, hre.ethers.parseEther("1000"));
 
 // Mint tokens using mintFor (owner only, for testing)
-await mockDEVToken.mintFor(addr2.address, parseEther("500"));
+await mockDEVToken.mintFor(addr2.address, hre.ethers.parseEther("500"));
 
 // Transfer tokens
-await mockDEVToken.connect(addr1).transfer(addr2.address, parseEther("100"));
+await mockDEVToken.connect(addr1).transfer(addr2.address, hre.ethers.parseEther("100"));
 
 // Burn tokens from an address
-await mockDEVToken.connect(addr2).burn(parseEther("50"));
+await mockDEVToken.connect(addr2).burn(hre.ethers.parseEther("50"));
 
 // Delegate voting power
 await mockDEVToken.connect(addr1).delegate(addr2.address);
