@@ -69,33 +69,25 @@ Create a new file, for example, `scripts/deploy-minimal.ts`, and paste the follo
 import { ethers } from "hardhat";
 
 async function main() {
+  const [deployer] = await ethers.getSigners();
+
   // Deploy MockDEVToken
   const MockDEVToken = await ethers.getContractFactory("MockDEVToken");
-  const mockDEVToken = await MockDEVToken.deploy();
+  const mockDEVToken = await MockDEVToken.deploy(deployer.address, "MockDEVToken", "mDEV");
   await mockDEVToken.waitForDeployment();
-  console.log(`MockDEVToken deployed to: ${mockDEVToken.target}`);
+  console.log(`MockDEVToken deployed to: ${mockDEVToken.target} with admin ${deployer.address}, name "MockDEVToken", symbol "mDEV"`);
 
   // Deploy RepositoryRegistry
   const RepositoryRegistry = await ethers.getContractFactory("RepositoryRegistry");
-  const repositoryRegistry = await RepositoryRegistry.deploy();
+  const repositoryRegistry = await RepositoryRegistry.deploy(deployer.address, mockDEVToken.target, deployer.address, ethers.parseEther("10"));
   await repositoryRegistry.waitForDeployment();
-  console.log(`RepositoryRegistry deployed to: ${repositoryRegistry.target}`);
+  console.log(`RepositoryRegistry deployed to: ${repositoryRegistry.target} with owner ${deployer.address}, token ${mockDEVToken.target}, fee wallet ${deployer.address}, and submission fee 10 ETH`);
 
   // Deploy DEVoterTreasury
-  // DEVoterTreasury constructor requires a token address and an owner address.
-  // We'll use the deployed MockDEVToken address and the deployer's address as the owner.
-  const [deployer] = await ethers.getSigners();
   const DEVoterTreasury = await ethers.getContractFactory("DEVoterTreasury");
-  const devoterTreasury = await DEVoterTreasury.deploy(mockDEVToken.target, deployer.address);
+  const devoterTreasury = await DEVoterTreasury.deploy();
   await devoterTreasury.waitForDeployment();
   console.log(`DEVoterTreasury deployed to: ${devoterTreasury.target}`);
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
-```
 
 Then, run the script using Hardhat:
 
