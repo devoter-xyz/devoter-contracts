@@ -15,8 +15,6 @@
     "function-name-camelcase": "error",
     "modifier-name-camelcase": "error",
     "private-vars-leading-underscore": "warn",
-    "state-var-name-snakecase": "warn",
-    "pragma-version": ["error", "^0.8.0"],
     "avoid-suicide": "error",
     "avoid-sha3": "warn"
   }
