@@ -9,6 +9,8 @@ This document explains the fee system implemented in `DEVoterEscrow`. It describ
 - exemption and administrative controls
 - rounding behaviour and common edge cases
 
+Note: A summary of the fee calculation logic and key constants are also captured in the contract comments of `DEVoterTreasury.sol`.
+
 ## Basis points (bps) refresher
 
 - 1 basis point (1 bps) = 0.01%
